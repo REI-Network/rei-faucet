@@ -42,7 +42,7 @@ export class DB {
     const transaction = await sequelize.transaction();
     const addrRecords = await AddressInfo.findAll({
       order: [['id', 'DESC']],
-      limit: 10,
+      limit: 3,
       where: {
         [Op.and]: {
           address: address,
@@ -51,10 +51,10 @@ export class DB {
       },
       transaction
     });
-    if (!addrRecords || addrRecords.length < 3) {
+    if (addrRecords.length < 3) {
       return true;
     }
-    if (addrRecords[0].createtime - addrRecords[2].createtime <= 1000 * 60 * 60 * 24) {
+    if (Date.now() - addrRecords[2].createtime >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;

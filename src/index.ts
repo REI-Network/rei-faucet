@@ -14,23 +14,20 @@ const db = new DB();
 
 const apiLimiter = new RateLimit({
   windowMs: 24 * 60 * 60 * 1000,
-  max: 3,
+  max: 10,
   delayMs: 0,
   handler: (_req: any, res: any) => {
     res.format({
-      json: function () {
-        res.status(429).json(Error('Please request after 24 hours '));
-      },
       html: function () {
-        res.status(429).end('Please request after 24 hours');
+        res.send({ ErrorCode: 1, message: 'The api call limit has been reached' });
       }
     });
   }
 });
 
-const timeLimitCheck = (req: any, res: any, next: any) => {
-  if (!db.checkTimesLimit(req.query.address)) {
-    res.status(429).end('Please request after 24 hours');
+const timeLimitCheck = async (req: any, res: any, next: any) => {
+  if (!(await db.checkTimesLimit(req.query.address))) {
+    res.send({ ErrorCode: 2, message: 'Only 3 times within 24 hours' });
     return;
   }
   next();
@@ -39,25 +36,35 @@ const timeLimitCheck = (req: any, res: any, next: any) => {
 app.use('/send', apiLimiter);
 app.use('/send', timeLimitCheck);
 app.get('/send', async (req: any, res: any) => {
-  const address = req.query.address;
-  const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
-  const postinfo = await db.addPostinfo(address, ip);
-  console.log('Start to transfer to ', address);
-  const accounts = await web3.eth.getAccounts();
   try {
-    const trans = await web3.eth.sendTransaction({
-      from: accounts[0],
-      to: address,
-      value: '10000000000000000'
-    });
-    console.log(trans);
-    res.send({ message: 'sucessful, the transaction hash is:', hash: trans.transactionHash });
-  } catch (e) {
-    console.log(e);
-    res.status(500).send('failed, format error ,example：/send?address=youraddress');
+    const address = req.query.address;
+    if (!web3.utils.isAddress(address)) {
+      res.send({ ErrorCode: 3, message: 'Invalid address ,please check the format, example：/send?address=youraddress ' });
+      return;
+    }
+    const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
+    const postinfo = await db.addPostinfo(address, ip);
+    console.log('Start to transfer to ', address);
+    const accounts = await web3.eth.getAccounts();
+    try {
+      const trans = await web3.eth.sendTransaction({
+        from: accounts[0],
+        to: address,
+        value: '10000000000000000'
+      });
+      console.log(trans);
+      res.send({ ErrorCode: 0, message: 'Successful', transactionhash: trans.transactionHash });
+    } catch (e) {
+      console.log(e);
+      res.send({ ErrorCode: 4, message: 'Transfer failed' });
+      return;
+    }
+    postinfo.state = 1;
+    await postinfo.save();
+  } catch (error) {
+    console.log(error);
+    res.send({ ErrorCode: 5, message: 'Unknown mistake' });
   }
-  postinfo.state = 1;
-  await postinfo.save();
 });
 
 app.get('/', (req: any, res: any) => {
