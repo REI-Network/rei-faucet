@@ -9,7 +9,7 @@ export declare interface AddressInfo {
   address: string;
   ip: string;
   transactionhash: string;
-  createtime: number;
+  createdAt: number;
   state: number;
 }
 
@@ -20,9 +20,6 @@ AddressInfo.init(
     },
     ip: {
       type: DataTypes.STRING
-    },
-    createtime: {
-      type: DataTypes.DATE
     },
     transactionhash: {
       type: DataTypes.STRING
@@ -37,7 +34,7 @@ AddressInfo.init(
     indexes: [
       {
         unique: true,
-        fields: ['address', 'createtime', 'state']
+        fields: ['address', 'createdAt', 'state']
       }
     ]
   }

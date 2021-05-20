@@ -10,3 +10,4 @@ Use the `http://localhost:3000/send?address=youraddress`
 - `3` Invalid address
 - `4` Transfer failed
 - `5` Other errors
+- `6` Balance not enough

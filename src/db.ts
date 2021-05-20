@@ -24,8 +24,7 @@ export class DB {
       const postinfo = await AddressInfo.create(
         {
           address: address,
-          ip: ip,
-          createtime: Date.now()
+          ip: ip
         },
         { transaction }
       );
@@ -46,7 +45,7 @@ export class DB {
       where: {
         [Op.and]: {
           address: address,
-          state: 1
+          state: 1 || 0
         }
       },
       transaction
@@ -54,7 +53,7 @@ export class DB {
     if (addrRecords.length < 3) {
       return true;
     }
-    if (Date.now() - addrRecords[2].createtime >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - addrRecords[2].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;
