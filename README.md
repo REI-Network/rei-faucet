@@ -1,2 +1,2 @@
-# gxchain2-fauct
- The gxchain2's fauct
+# gxchain2-fauet
+ The gxchain2's fauet
