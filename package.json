@@ -1,12 +1,12 @@
 {
-  "name": "gxchain2-fauct",
+  "name": "gxchain2-fauet",
+  "private":true,
   "version": "1.0.0",
   "description": "",
-  "main": ".eslintrc.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "node ./dist/index.js",
-    "start": "node -r ts-node/register src/index.ts"
+    "start": "ts-node src/index.ts"
   },
   "repository": {
     "type": "git",
@@ -20,6 +20,7 @@
   "homepage": "https://github.com/gxchain/gxchain2-fauct#readme",
   "dependencies": {
     "@truffle/hdwallet-provider": "^1.4.0",
+    "dotenv": "^9.0.2",
     "express": "^4.17.1",
     "express-rate-limit": "^5.2.6",
     "mysql2": "^2.2.5",

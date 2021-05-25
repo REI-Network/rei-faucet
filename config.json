@@ -1,0 +1,5 @@
+{
+    "server_provider":"https://rinkeby.infura.io/v3/a6026acd856c459a8f649081f1b689e1",
+    "once_amount":"10000000000000000",
+    "database_url":"mysql://root:bjn1997926@localhost:3306/fauct"
+}

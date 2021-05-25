@@ -1,7 +1,11 @@
 import { Sequelize, Model, DataTypes } from 'sequelize';
 import process from 'process';
+import Web3 from 'web3';
 
-export const sequelize = new Sequelize(process.env['DATABASE_URL']!, { logging: false });
+const configurl = process.env['CONFIG_URL'] || '../config.json';
+export const config = require(configurl);
+export const web3 = new Web3(config.server_provider);
+export const sequelize = new Sequelize(config.database_url, { logging: false });
 
 export class AddressInfo extends Model {}
 
@@ -35,6 +39,29 @@ AddressInfo.init(
       {
         unique: true,
         fields: ['address', 'createdAt', 'state']
+      }
+    ]
+  }
+);
+
+export declare interface AccountInfo {
+  address: string;
+  nonceTodo: number;
+}
+
+export class AccountInfo extends Model {}
+
+AccountInfo.init(
+  {
+    address: { type: DataTypes.STRING },
+    nonceTodo: { type: DataTypes.INTEGER }
+  },
+  {
+    sequelize,
+    indexes: [
+      {
+        unique: true,
+        fields: ['address']
       }
     ]
   }

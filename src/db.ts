@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
-import { AddressInfo, sequelize } from './model';
+import { AddressInfo, AccountInfo, sequelize, web3 } from './model';
 
+export type fauetobject = { address: string; nonceTodo: number; gap: number; islocked: boolean };
 export class DB {
   private initPromise!: Promise<void>;
 
@@ -45,11 +46,12 @@ export class DB {
       where: {
         [Op.and]: {
           address: address,
-          state: 1 || 0
+          state: { [Op.or]: [0, 1] }
         }
       },
       transaction
     });
+    await transaction.commit();
     if (addrRecords.length < 3) {
       return true;
     }
@@ -58,4 +60,50 @@ export class DB {
     }
     return false;
   }
+
+  async findSuitableAccount(fauetarray: fauetobject[]) {
+    await this.initPromise;
+    const transaction = await sequelize.transaction();
+    try {
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  async initTheAccounts(address: string[], fauctarray: fauetobject[]) {
+    await this.initPromise;
+    const transaction = await sequelize.transaction();
+    try {
+      const accountall = await AccountInfo.findAll();
+      for (const addr of address) {
+        const addrRecord = await AccountInfo.findOne({
+          where: {
+            address: addr
+          },
+          transaction
+        });
+        if (!addrRecord) {
+          const nonce = await web3.eth.getTransactionCount(addr);
+          await AccountInfo.create({
+            address: address,
+            nonceTodo: nonce
+          });
+          fauctarray.push({ address: addr, nonceTodo: nonce, gap: 0, islocked: false });
+        } else {
+          const nonce = await web3.eth.getTransactionCount(addr);
+          if (nonce > addrRecord.nonceTodo) {
+            addrRecord.nonceTodo = nonce;
+          }
+          fauctarray.push({ address: addr, nonceTodo: addrRecord.nonceTodo, gap: addrRecord.nonceTodo - nonce, islocked: false });
+        }
+      }
+      transaction.commit();
+    } catch (error) {
+      transaction.rollback();
+      throw error;
+    }
+  }
+
+  async tansferWithNonce(from: string, to: string) {}
 }

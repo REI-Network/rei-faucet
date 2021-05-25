@@ -1,5 +1,5 @@
-# gxchain2-fauct
- The gxchain2's fauct
+# gxchain2-fauet
+ The gxchain2's fauet
 
 ### How to get token?
 Use the `http://localhost:3000/send?address=youraddress`
@@ -11,3 +11,4 @@ Use the `http://localhost:3000/send?address=youraddress`
 - `4` Transfer failed
 - `5` Other errors
 - `6` Balance not enough
+- `7` System busy
