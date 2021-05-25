@@ -1,6 +1,5 @@
-# gxchain2-fauet
- The gxchain2's fauet
-
+# gxchain2-faucet
+ The gxchain2's faucet
 ### How to get token?
 Use the `http://localhost:3000/send?address=youraddress`
 ### Error code
