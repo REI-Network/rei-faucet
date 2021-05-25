@@ -44,12 +44,12 @@ AddressInfo.init(
   }
 );
 
+export class AccountInfo extends Model {}
+
 export declare interface AccountInfo {
   address: string;
   nonceTodo: number;
 }
-
-export class AccountInfo extends Model {}
 
 AccountInfo.init(
   {

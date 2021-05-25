@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import { AddressInfo, AccountInfo, sequelize, web3 } from './model';
 
-export type fauetobject = { address: string; nonceTodo: number; gap: number; islocked: boolean };
+export type faucetobject = { address: string; nonceTodo: number; gap: number; islocked: boolean };
 export class DB {
   private initPromise!: Promise<void>;
 
@@ -61,41 +61,51 @@ export class DB {
     return false;
   }
 
-  async findSuitableAccount(fauetarray: fauetobject[]) {
+  async findAccount(addr: string) {
     await this.initPromise;
     const transaction = await sequelize.transaction();
     try {
+      const addrRecord = await AccountInfo.findOne({
+        where: {
+          address: addr
+        },
+        transaction
+      });
+      await transaction.commit();
+      return addrRecord;
     } catch (error) {
-      await transaction.rollback();
+      transaction.rollback();
       throw error;
     }
   }
 
-  async initTheAccounts(address: string[], fauctarray: fauetobject[]) {
+  async initTheAccounts(address: string[], faucetarray: faucetobject[]) {
     await this.initPromise;
     const transaction = await sequelize.transaction();
     try {
-      const accountall = await AccountInfo.findAll();
+      console.log(1.6);
       for (const addr of address) {
+        console.log(1.65);
         const addrRecord = await AccountInfo.findOne({
           where: {
             address: addr
           },
           transaction
         });
-        if (!addrRecord) {
+        if (addrRecord === null) {
+          console.log(1.7);
           const nonce = await web3.eth.getTransactionCount(addr);
           await AccountInfo.create({
             address: address,
             nonceTodo: nonce
           });
-          fauctarray.push({ address: addr, nonceTodo: nonce, gap: 0, islocked: false });
+          faucetarray.push({ address: addr, nonceTodo: nonce, gap: 0, islocked: false });
         } else {
           const nonce = await web3.eth.getTransactionCount(addr);
           if (nonce > addrRecord.nonceTodo) {
             addrRecord.nonceTodo = nonce;
           }
-          fauctarray.push({ address: addr, nonceTodo: addrRecord.nonceTodo, gap: addrRecord.nonceTodo - nonce, islocked: false });
+          faucetarray.push({ address: addr, nonceTodo: addrRecord.nonceTodo, gap: addrRecord.nonceTodo - nonce, islocked: false });
         }
       }
       transaction.commit();
@@ -104,6 +114,4 @@ export class DB {
       throw error;
     }
   }
-
-  async tansferWithNonce(from: string, to: string) {}
 }

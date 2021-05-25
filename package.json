@@ -10,14 +10,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gxchain/gxchain2-fauct.git"
+    "url": "git+https://github.com/gxchain/gxchain2-fauet.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/gxchain/gxchain2-fauct/issues"
+    "url": "https://github.com/gxchain/gxchain2-fauet/issues"
   },
-  "homepage": "https://github.com/gxchain/gxchain2-fauct#readme",
+  "homepage": "https://github.com/gxchain/gxchain2-fauet#readme",
   "dependencies": {
     "@truffle/hdwallet-provider": "^1.4.0",
     "dotenv": "^9.0.2",

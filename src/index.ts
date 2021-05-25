@@ -1,11 +1,12 @@
 import express from 'express';
-import { DB, fauetobject } from './db';
+import { DB, faucetobject } from './db';
 import { config, web3 } from './model';
 
 const app = express();
 const privatekeys = process.env['PRIVATEKEY']!.split(',');
 const address: string[] = [];
-const fauetarray = new Array<fauetobject>();
+const faucetarray = new Array<faucetobject>();
+const db = new DB();
 
 const init = async () => {
   for (const privatekey of privatekeys) {
@@ -14,11 +15,13 @@ const init = async () => {
   }
   const accounts = web3.eth.accounts.wallet;
   console.log(await web3.eth.getTransactionCount(accounts[0].address));
-  await db.initTheAccounts(address, fauetarray);
+  console.log(1);
+  await db.initTheAccounts(address, faucetarray);
+  console.log(2);
+  console.log(faucetarray);
 };
-init();
 
-const db = new DB();
+init();
 
 const timeLimitCheck = async (req: any, res: any, next: any) => {
   if (!(await db.checkTimesLimit(req.query.address))) {
@@ -36,29 +39,33 @@ app.get('/send', async (req: any, res: any) => {
       res.send({ ErrorCode: 3, message: 'Invalid address ,please check the format, example：/send?address=youraddress ' });
       return;
     }
-    const fauetindex = await findSuitableAccount(fauetarray);
-    // if (fauetaddress && gap && gap < 10) {
-    // } else {
-    //   res.send({ ErrorCode: 7, message: 'System busy' });
-    //   return;
-    // }
-    const fauetaddress = fauetarray[fauetindex].address;
-    const balance = await web3.eth.getBalance(fauetaddress);
+    const faucetindex = await findSuitableAccount(faucetarray);
+    if (faucetindex === -1) {
+      res.send({ ErrorCode: 7, message: 'System busy' });
+      return;
+    }
+    const faucetaddress = faucetarray[faucetindex].address;
+    const balance = await web3.eth.getBalance(faucetaddress);
     if (+balance < config.once_amount * 2) {
       res.send({ ErrorCode: 6, message: 'Balance not enough' });
       return;
     }
     const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
     const postinfo = await db.addPostinfo(address, ip);
-    console.log('Start to transfer to ', address);
 
+    const accountinfo = await db.findAccount(faucetaddress);
+    if (accountinfo === null) {
+      return;
+    }
+    console.log('Start to transfer to ', address);
     try {
       const trans = await web3.eth.sendTransaction({
-        from: fauetaddress,
+        from: faucetaddress,
         to: address,
         value: config.once_amount,
         gasPrice: '1000000000',
-        gas: '21000'
+        gas: '21000',
+        nonce: faucetarray[faucetindex].nonceTodo
       });
       console.log(trans);
       res.send({ ErrorCode: 0, message: 'Successful', transactionhash: trans.transactionHash });
@@ -69,8 +76,10 @@ app.get('/send', async (req: any, res: any) => {
       await postinfo.save();
       return;
     }
-
+    accountinfo.nonceTodo++;
     postinfo.state = 1;
+    faucetarray[faucetindex].nonceTodo++;
+    await accountinfo.save();
     await postinfo.save();
   } catch (error) {
     console.log(error);
@@ -78,17 +87,18 @@ app.get('/send', async (req: any, res: any) => {
   }
 });
 
-async function findSuitableAccount(fauetarray: fauetobject[]) {
-  for (const a of fauetarray) {
+async function findSuitableAccount(faucetarray: faucetobject[]) {
+  for (const a of faucetarray) {
     const nonce = await web3.eth.getTransactionCount(a.address);
     a.gap = a.nonceTodo - nonce;
   }
-  fauetarray.sort((a, b) => {
+  faucetarray.sort((a, b) => {
     return a.gap - b.gap;
   });
-  for (const a of fauetarray) {
+  for (const a of faucetarray) {
     if (a.islocked === false && a.gap < 10) {
-      return fauetarray.indexOf(a);
+      a.islocked = true;
+      return faucetarray.indexOf(a);
     }
   }
   return -1;
