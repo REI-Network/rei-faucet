@@ -1,6 +1,6 @@
 {
-  "name": "gxchain2-fauet",
-  "private":true,
+  "name": "gxchain2-faucet",
+  "private": true,
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",
@@ -10,16 +10,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gxchain/gxchain2-fauet.git"
+    "url": "git+https://github.com/gxchain/gxchain2-faucet.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/gxchain/gxchain2-fauet/issues"
+    "url": "https://github.com/gxchain/gxchain2-faucet/issues"
   },
-  "homepage": "https://github.com/gxchain/gxchain2-fauet#readme",
+  "homepage": "https://github.com/gxchain/gxchain2-faucet#readme",
   "dependencies": {
     "@truffle/hdwallet-provider": "^1.4.0",
+    "console-stamp": "^3.0.2",
     "dotenv": "^9.0.2",
     "express": "^4.17.1",
     "express-rate-limit": "^5.2.6",

@@ -1,7 +1,23 @@
 import { Op } from 'sequelize';
-import { AddressInfo, AccountInfo, sequelize, web3 } from './model';
+import { RecordInfo, AccountInfo, sequelize, web3 } from './model';
 
-export type faucetobject = { address: string; nonceTodo: number; gap: number; islocked: boolean };
+//export type faucetobject = { address: string; nonceTodo: number; gap: number; islocked: boolean };
+
+export class faucetobject {
+  address: string;
+  nonceTodo: number;
+  nonceNow: number;
+  gap: number;
+  balance: string;
+  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: string) {
+    this.address = address;
+    this.gap = gap;
+    this.nonceNow = nonceNow;
+    this.nonceTodo = nonceTodo;
+    this.balance = balance;
+  }
+}
+
 export class DB {
   private initPromise!: Promise<void>;
 
@@ -18,19 +34,21 @@ export class DB {
     await sequelize.sync();
   }
 
-  async addPostinfo(address: string, ip: string) {
+  async addRecordinfo(fromaddress: string, toaddress: string, ip: string, amount: string) {
     await this.initPromise;
     const transaction = await sequelize.transaction();
     try {
-      const postinfo = await AddressInfo.create(
+      const recordinfo = await RecordInfo.create(
         {
-          address: address,
-          ip: ip
+          from: fromaddress,
+          to: toaddress,
+          ip: ip,
+          amount: amount
         },
         { transaction }
       );
       await transaction.commit();
-      return postinfo;
+      return recordinfo;
     } catch (error) {
       await transaction.rollback();
       throw error;
@@ -40,9 +58,9 @@ export class DB {
   async checkTimesLimit(address: string): Promise<boolean> {
     await this.initPromise;
     const transaction = await sequelize.transaction();
-    const addrRecords = await AddressInfo.findAll({
+    const addrRecords = await RecordInfo.findAll({
       order: [['id', 'DESC']],
-      limit: 3,
+      limit: 20,
       where: {
         [Op.and]: {
           address: address,
@@ -52,10 +70,10 @@ export class DB {
       transaction
     });
     await transaction.commit();
-    if (addrRecords.length < 3) {
+    if (addrRecords.length < 20) {
       return true;
     }
-    if (Date.now() - addrRecords[2].createdAt >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - addrRecords[19].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;
@@ -81,11 +99,10 @@ export class DB {
 
   async initTheAccounts(address: string[], faucetarray: faucetobject[]) {
     await this.initPromise;
+    const blocknumber = await web3.eth.getBlockNumber();
     const transaction = await sequelize.transaction();
     try {
-      console.log(1.6);
       for (const addr of address) {
-        console.log(1.65);
         const addrRecord = await AccountInfo.findOne({
           where: {
             address: addr
@@ -93,19 +110,19 @@ export class DB {
           transaction
         });
         if (addrRecord === null) {
-          console.log(1.7);
-          const nonce = await web3.eth.getTransactionCount(addr);
+          const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
+          const balance = await web3.eth.getBalance(addr, blocknumber);
           await AccountInfo.create({
-            address: address,
+            address: addr,
             nonceTodo: nonce
           });
-          faucetarray.push({ address: addr, nonceTodo: nonce, gap: 0, islocked: false });
+          faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance));
         } else {
           const nonce = await web3.eth.getTransactionCount(addr);
-          if (nonce > addrRecord.nonceTodo) {
-            addrRecord.nonceTodo = nonce;
-          }
-          faucetarray.push({ address: addr, nonceTodo: addrRecord.nonceTodo, gap: addrRecord.nonceTodo - nonce, islocked: false });
+          const balance = await web3.eth.getBalance(addr, blocknumber);
+          addrRecord.nonceTodo = nonce > addrRecord.nonceTodo ? nonce : addrRecord.nonceTodo;
+          addrRecord.nonceNow = nonce > addrRecord.nonceNow ? nonce : addrRecord.nonceNow;
+          faucetarray.push(new faucetobject(addr, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance));
         }
       }
       transaction.commit();

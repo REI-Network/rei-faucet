@@ -7,9 +7,9 @@ export const config = require(configurl);
 export const web3 = new Web3(config.server_provider);
 export const sequelize = new Sequelize(config.database_url, { logging: false });
 
-export class AddressInfo extends Model {}
+export class RecordInfo extends Model {}
 
-export declare interface AddressInfo {
+export declare interface RecordInfo {
   address: string;
   ip: string;
   transactionhash: string;
@@ -17,15 +17,21 @@ export declare interface AddressInfo {
   state: number;
 }
 
-AddressInfo.init(
+RecordInfo.init(
   {
-    address: {
+    from: {
+      type: DataTypes.STRING
+    },
+    to: {
       type: DataTypes.STRING
     },
     ip: {
       type: DataTypes.STRING
     },
     transactionhash: {
+      type: DataTypes.STRING
+    },
+    amount: {
       type: DataTypes.STRING
     },
     state: {
@@ -38,7 +44,7 @@ AddressInfo.init(
     indexes: [
       {
         unique: true,
-        fields: ['address', 'createdAt', 'state']
+        fields: ['from', 'createdAt', 'state']
       }
     ]
   }
@@ -49,12 +55,20 @@ export class AccountInfo extends Model {}
 export declare interface AccountInfo {
   address: string;
   nonceTodo: number;
+  nonceNow: number;
 }
 
 AccountInfo.init(
   {
-    address: { type: DataTypes.STRING },
-    nonceTodo: { type: DataTypes.INTEGER }
+    address: {
+      type: DataTypes.STRING
+    },
+    nonceTodo: {
+      type: DataTypes.INTEGER
+    },
+    nonceNow: {
+      type: DataTypes.INTEGER
+    }
   },
   {
     sequelize,
