@@ -25,7 +25,8 @@ class Faucet {
   private initPromise!: Promise<void>;
   addressArray: string[] = [];
   faucetarray = new Array<faucetobject>();
-  queueresolve = undefined;
+  queueresolve: any = undefined;
+  requestresolve: any = undefined;
 
   constructor() {
     this.initPromise = this.init();
@@ -40,14 +41,13 @@ class Faucet {
   }
 
   async initaccounts(privatekeys: string[]) {
-    await this.initPromise;
     for (const privatekey of privatekeys) {
       const a = web3.eth.accounts.wallet.add(web3.eth.accounts.privateKeyToAccount(privatekey));
       this.addressArray.push(a.address);
     }
     const accounts = web3.eth.accounts.wallet;
     await db.initTheAccounts(this.addressArray, this.faucetarray);
-    console.log('init');
+    console.log('finished init');
   }
 
   async findSuitableAccount() {
@@ -68,6 +68,7 @@ class Faucet {
   }
 
   async queueLoop() {
+    await this.initPromise;
     console.log('start queue loop');
     while (1) {
       const index = await this.findSuitableAccount();
@@ -76,7 +77,15 @@ class Faucet {
           this.queueresolve = resolve;
         });
       }
-      const { req, res } = queue.pop();
+      const reqandres = queue.pop();
+      if (!reqandres) {
+        await new Promise<void>((resolve) => {
+          this.requestresolve = resolve;
+        });
+        continue;
+      }
+      const req = reqandres.req;
+      const res = reqandres.res;
       const ip = req.headers['x-real-ip'] || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
       //start to transfer transaction
       const fromaddress = this.faucetarray[index].address;
@@ -103,7 +112,7 @@ class Faucet {
             this.faucetarray[index].balance = (+this.faucetarray[index].balance - config.once_amount - 1000000000 * 21000).toString();
             res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
             await recordinfo.save();
-            const accountinfo = await db.findAccount(fromaddress);
+            const accountinfo = (await db.findAccount(fromaddress))!;
             accountinfo.nonceTodo++;
             accountinfo.save();
             databaePromise();
@@ -124,8 +133,13 @@ class Faucet {
   }
 
   async receiptLoop() {
+    await this.initPromise;
+    console.log('start receipt loop');
     while (1) {
       const transArray = await db.findUnaffirmtranscation();
+      if (transArray.length === 0) {
+        continue;
+      }
       transArray.sort((a, b) => {
         if (a.from === b.from) {
           return a.nonce - b.nonce;
@@ -135,7 +149,7 @@ class Faucet {
       });
       for (let index = 0; index !== -1 && index < transArray.length; ) {
         const instance = transArray[index];
-        const faucetaccount = this.faucetarray.find((item) => item.address === instance.from);
+        const faucetaccount = this.faucetarray.find((item) => item.address === instance.from)!;
         const receipt = await web3.eth.getTransactionReceipt(instance.transactionhash);
         if (receipt === null) {
           let databaePromise: (value: void | PromiseLike<void>) => void;
@@ -170,9 +184,10 @@ class Faucet {
           instance.state = 2;
           faucetaccount.nonceNow = instance.nonce;
           faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
-          const accinstance = await db.findAccount(faucetaccount.address);
+          const accinstance = (await db.findAccount(faucetaccount.address))!;
           accinstance.nonceNow = faucetaccount.nonceNow;
           await accinstance.save();
+          index++;
         }
       }
       let notbusy = 0;
@@ -186,6 +201,7 @@ class Faucet {
         this.queueresolve();
         this.queueresolve = undefined;
       }
+      console.log('M');
     }
   }
 }
@@ -193,7 +209,7 @@ class Faucet {
 const faucet = new Faucet();
 const queue = new Queuestring();
 
-const timeLimitCheck = async (req: any, res: any, next: any) => {
+const timeLimitCheck = async (req: any, res: any) => {
   if (!(await db.checkTimesLimit(req.query.address))) {
     res.send({ ErrorCode: 2, message: 'Only 3 times within 24 hours' });
     return;
@@ -206,11 +222,16 @@ const timeLimitCheck = async (req: any, res: any, next: any) => {
     res.send({ ErrorCode: 3, message: 'Invalid address ,please check the format, example：/send?address=youraddress ' });
     return;
   }
-  next();
+  if (faucet.requestresolve) {
+    faucet.requestresolve();
+    faucet.requestresolve = undefined;
+  }
 };
 
 app.use('/send', timeLimitCheck);
 
+faucet.queueLoop();
+faucet.receiptLoop();
 app.listen(3000, function () {
   console.log('Server has been started');
 });

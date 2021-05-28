@@ -63,7 +63,7 @@ export class DB {
       limit: 20,
       where: {
         [Op.and]: {
-          address: address,
+          to: address,
           state: { [Op.or]: [0, 1] }
         }
       },
@@ -92,7 +92,7 @@ export class DB {
       await transaction.commit();
       return addrRecord;
     } catch (error) {
-      transaction.rollback();
+      await transaction.rollback();
       throw error;
     }
   }
@@ -100,17 +100,22 @@ export class DB {
   async findUnaffirmtranscation() {
     await this.initPromise;
     const transaction = await sequelize.transaction();
-    const transRecords = await RecordInfo.findAll({
-      order: [['id', 'DESC']],
-      where: {
-        [Op.and]: {
-          state: 1
-        }
-      },
-      transaction
-    });
-    return transRecords;
-    await transaction.commit();
+    try {
+      const transRecords = await RecordInfo.findAll({
+        order: [['id', 'DESC']],
+        where: {
+          [Op.and]: {
+            state: 1
+          }
+        },
+        transaction
+      });
+      await transaction.commit();
+      return transRecords;
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 
   async initTheAccounts(address: string[], faucetarray: faucetobject[]) {
@@ -130,7 +135,8 @@ export class DB {
           const balance = await web3.eth.getBalance(addr, blocknumber);
           await AccountInfo.create({
             address: addr,
-            nonceTodo: nonce
+            nonceTodo: nonce,
+            nonceNow: nonce
           });
           faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance));
         } else {
@@ -141,9 +147,11 @@ export class DB {
           faucetarray.push(new faucetobject(addr, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance));
         }
       }
-      transaction.commit();
+      console.log('initTheAccounts 3');
+      await transaction.commit();
+      console.log('initTheAccounts 4');
     } catch (error) {
-      transaction.rollback();
+      await transaction.rollback();
       throw error;
     }
   }
