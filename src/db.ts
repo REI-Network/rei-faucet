@@ -58,7 +58,7 @@ export class DB {
   async checkTimesLimit(address: string): Promise<boolean> {
     await this.initPromise;
     const transaction = await sequelize.transaction();
-    const addrRecords = await RecordInfo.findAll({
+    const transRecords = await RecordInfo.findAll({
       order: [['id', 'DESC']],
       limit: 20,
       where: {
@@ -70,10 +70,10 @@ export class DB {
       transaction
     });
     await transaction.commit();
-    if (addrRecords.length < 20) {
+    if (transRecords.length < 20) {
       return true;
     }
-    if (Date.now() - addrRecords[19].createdAt >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - transRecords[19].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;
@@ -95,6 +95,22 @@ export class DB {
       transaction.rollback();
       throw error;
     }
+  }
+
+  async findUnaffirmtranscation() {
+    await this.initPromise;
+    const transaction = await sequelize.transaction();
+    const transRecords = await RecordInfo.findAll({
+      order: [['id', 'DESC']],
+      where: {
+        [Op.and]: {
+          state: 1
+        }
+      },
+      transaction
+    });
+    return transRecords;
+    await transaction.commit();
   }
 
   async initTheAccounts(address: string[], faucetarray: faucetobject[]) {

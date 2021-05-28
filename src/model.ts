@@ -10,11 +10,14 @@ export const sequelize = new Sequelize(config.database_url, { logging: false });
 export class RecordInfo extends Model {}
 
 export declare interface RecordInfo {
-  address: string;
+  from: string;
+  to: string;
   ip: string;
   transactionhash: string;
   createdAt: number;
   state: number;
+  amount: string;
+  nonce: number;
 }
 
 RecordInfo.init(
@@ -33,6 +36,9 @@ RecordInfo.init(
     },
     amount: {
       type: DataTypes.STRING
+    },
+    nonce: {
+      type: DataTypes.INTEGER
     },
     state: {
       type: DataTypes.INTEGER,
