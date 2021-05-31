@@ -84,6 +84,9 @@ class Faucet {
         });
         continue;
       }
+      const noncetosend = this.faucetarray[index].nonceTodo;
+      this.faucetarray[index].nonceTodo++;
+      this.faucetarray[index].balance = (+this.faucetarray[index].balance - config.once_amount - 1000000000 * 21000).toString();
       const req = reqandres.req;
       const res = reqandres.res;
       const ip = req.headers['x-real-ip'] || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
@@ -101,15 +104,14 @@ class Faucet {
             value: config.once_amount,
             gasPrice: '1000000000',
             gas: '21000',
-            nonce: this.faucetarray[index].nonceTodo
+            nonce: noncetosend
           },
           async (_error, hash) => {
             console.log(hash);
             recordinfo.state = 1;
-            recordinfo.nonce = this.faucetarray[index].nonceTodo;
+            recordinfo.nonce = noncetosend;
             recordinfo.transactionhash = hash;
             recordinfo.amount = config.once_amount;
-            this.faucetarray[index].balance = (+this.faucetarray[index].balance - config.once_amount - 1000000000 * 21000).toString();
             res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
             await recordinfo.save();
             const accountinfo = (await db.findAccount(fromaddress))!;
@@ -121,9 +123,12 @@ class Faucet {
         await new Promise<void>((resolve) => {
           databaePromise = resolve;
         });
+        await trans;
         console.log(trans);
       } catch (e) {
         console.error(e);
+        this.faucetarray[index].nonceTodo--;
+        this.faucetarray[index].balance = (+this.faucetarray[index].balance + config.once_amount + 1000000000 * 21000).toString();
         res.send({ ErrorCode: 4, message: 'Transfer failed' });
         recordinfo.state = -1;
         await recordinfo.save();
@@ -179,13 +184,16 @@ class Faucet {
               databaePromise = resolve;
             });
             await instance.destroy();
+            console.log('destroy');
           }
         } else {
+          console.log('start to change state');
           instance.state = 2;
           faucetaccount.nonceNow = instance.nonce;
           faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
           const accinstance = (await db.findAccount(faucetaccount.address))!;
           accinstance.nonceNow = faucetaccount.nonceNow;
+          await instance.save();
           await accinstance.save();
           index++;
         }
@@ -201,7 +209,6 @@ class Faucet {
         this.queueresolve();
         this.queueresolve = undefined;
       }
-      console.log('M');
     }
   }
 }
