@@ -1,20 +1,19 @@
 import { Op } from 'sequelize';
 import { RecordInfo, AccountInfo, sequelize, web3 } from './model';
-
-//export type faucetobject = { address: string; nonceTodo: number; gap: number; islocked: boolean };
+import { BN } from 'ethereumjs-util';
 
 export class faucetobject {
   address: string;
   nonceTodo: number;
   nonceNow: number;
   gap: number;
-  balance: string;
+  balance: BN;
   constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: string) {
     this.address = address;
     this.gap = gap;
     this.nonceNow = nonceNow;
     this.nonceTodo = nonceTodo;
-    this.balance = balance;
+    this.balance = new BN(balance);
   }
 }
 
@@ -118,7 +117,7 @@ export class DB {
     }
   }
 
-  async initTheAccounts(address: string[], faucetarray: faucetobject[]) {
+  async initAccounts(address: string[], faucetarray: faucetobject[]) {
     await this.initPromise;
     const blocknumber = await web3.eth.getBlockNumber();
     const transaction = await sequelize.transaction();
@@ -150,6 +149,18 @@ export class DB {
       console.log('initTheAccounts 3');
       await transaction.commit();
       console.log('initTheAccounts 4');
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  async unifySave(recordinfo: RecordInfo | AccountInfo, accountinfo: RecordInfo | AccountInfo) {
+    const transaction = await sequelize.transaction();
+    try {
+      await recordinfo.save({ transaction });
+      await accountinfo.save({ transaction });
+      await transaction.commit();
     } catch (error) {
       await transaction.rollback();
       throw error;

@@ -1,20 +1,21 @@
 import express from 'express';
 import { DB, faucetobject } from './db';
 import { config, web3 } from './model';
+import { BN } from 'ethereumjs-util';
 
 require('console-stamp')(console, {
   format: ':date(yyyy/mm/dd HH:MM:ss.l):label'
 });
 
-const db = new DB();
+type reqandres = {
+  req: { headers: { [headers: string]: string }; query: { address: string } };
+  res: { send: ({}) => void };
+};
 const app = express();
 class Queuestring {
-  requests: { req: any; res: any }[] = [];
-  push(req: any, res: any): number {
-    if (this.requests.length >= 100) {
-      return -1;
-    }
-    return this.requests.push({ req, res });
+  requests: reqandres[] = [];
+  push(instance: reqandres): number {
+    return this.requests.push(instance);
   }
   pop() {
     return this.requests.shift();
@@ -25,8 +26,10 @@ class Faucet {
   private initPromise!: Promise<void>;
   addressArray: string[] = [];
   faucetarray = new Array<faucetobject>();
-  queueresolve: any = undefined;
-  requestresolve: any = undefined;
+  requestresolve: undefined | (() => void) = undefined;
+  queueresolve: undefined | ((value: reqandres) => void) = undefined;
+  queue = new Queuestring();
+  db = new DB();
 
   constructor() {
     this.initPromise = this.init();
@@ -46,7 +49,7 @@ class Faucet {
       this.addressArray.push(a.address);
     }
     const accounts = web3.eth.accounts.wallet;
-    await db.initTheAccounts(this.addressArray, this.faucetarray);
+    await faucet.db.initAccounts(this.addressArray, this.faucetarray);
     console.log('finished init');
   }
 
@@ -71,68 +74,68 @@ class Faucet {
     await this.initPromise;
     console.log('start queue loop');
     while (1) {
-      const index = await this.findSuitableAccount();
-      if (index === -1) {
-        await new Promise<void>((resolve) => {
+      let reqandres = faucet.queue.pop();
+      if (!reqandres) {
+        reqandres = await new Promise<reqandres>((resolve) => {
           this.queueresolve = resolve;
         });
       }
-      const reqandres = queue.pop();
-      if (!reqandres) {
+      let index = await this.findSuitableAccount();
+      if (index === -1) {
         await new Promise<void>((resolve) => {
           this.requestresolve = resolve;
         });
-        continue;
+        index = await this.findSuitableAccount();
       }
-      const noncetosend = this.faucetarray[index].nonceTodo;
-      this.faucetarray[index].nonceTodo++;
-      this.faucetarray[index].balance = (+this.faucetarray[index].balance - config.once_amount - 1000000000 * 21000).toString();
-      const req = reqandres.req;
-      const res = reqandres.res;
-      const ip = req.headers['x-real-ip'] || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
+      let obj = this.faucetarray[index];
+      const noncetosend = obj.nonceTodo;
+      obj.nonceTodo++;
+      const balancenow = obj.balance;
+      obj.balance = obj.balance.sub(new BN(config.once_amount + 1000000000 * 21000));
+      const { req, res } = reqandres;
+      const ip = req.headers['x-real-ip'] || '1';
       //start to transfer transaction
-      const fromaddress = this.faucetarray[index].address;
+      const fromaddress = obj.address;
       const toaddress = req.query.address.toLocaleLowerCase();
-      const recordinfo = await db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
+      const recordinfo = await faucet.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
       console.log('Start to transfer to ', toaddress);
       try {
-        let databaePromise: (value: void | PromiseLike<void>) => void;
-        const trans = web3.eth.sendTransaction(
-          {
-            from: fromaddress,
-            to: toaddress,
-            value: config.once_amount,
-            gasPrice: '1000000000',
-            gas: '21000',
-            nonce: noncetosend
-          },
-          async (_error, hash) => {
-            console.log(hash);
-            recordinfo.state = 1;
-            recordinfo.nonce = noncetosend;
-            recordinfo.transactionhash = hash;
-            recordinfo.amount = config.once_amount;
-            res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
-            await recordinfo.save();
-            const accountinfo = (await db.findAccount(fromaddress))!;
-            accountinfo.nonceTodo++;
-            accountinfo.save();
-            databaePromise();
-          }
-        );
-        await new Promise<void>((resolve) => {
-          databaePromise = resolve;
+        const hash = await new Promise<string>((resolve, reject) => {
+          web3.eth.sendTransaction(
+            {
+              from: fromaddress,
+              to: toaddress,
+              value: config.once_amount,
+              gasPrice: '1000000000',
+              gas: '21000',
+              nonce: noncetosend
+            },
+            (_error, hash) => {
+              if (_error) {
+                reject(_error);
+              } else {
+                console.log(hash);
+                resolve(hash);
+              }
+            }
+          );
         });
-        await trans;
-        console.log(trans);
+        recordinfo.state = 1;
+        recordinfo.nonce = noncetosend;
+        recordinfo.transactionhash = hash;
+        recordinfo.amount = config.once_amount;
+        res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
+        const accountinfo = (await faucet.db.findAccount(fromaddress))!;
+        accountinfo.nonceTodo++;
+        await faucet.db.unifySave(recordinfo, accountinfo);
+        console.log('transaction hash: ', hash);
       } catch (e) {
-        console.error(e);
-        this.faucetarray[index].nonceTodo--;
-        this.faucetarray[index].balance = (+this.faucetarray[index].balance + config.once_amount + 1000000000 * 21000).toString();
+        obj.nonceTodo = noncetosend;
+        obj.balance = balancenow;
         res.send({ ErrorCode: 4, message: 'Transfer failed' });
         recordinfo.state = -1;
+        console.error(e);
         await recordinfo.save();
-        return;
       }
     }
   }
@@ -141,8 +144,11 @@ class Faucet {
     await this.initPromise;
     console.log('start receipt loop');
     while (1) {
-      const transArray = await db.findUnaffirmtranscation();
+      const transArray = await faucet.db.findUnaffirmtranscation();
       if (transArray.length === 0) {
+        (async () => {
+          setTimeout(() => {}, 5000);
+        })();
         continue;
       }
       transArray.sort((a, b) => {
@@ -157,44 +163,44 @@ class Faucet {
         const faucetaccount = this.faucetarray.find((item) => item.address === instance.from)!;
         const receipt = await web3.eth.getTransactionReceipt(instance.transactionhash);
         if (receipt === null) {
-          let databaePromise: (value: void | PromiseLike<void>) => void;
           index = transArray.findIndex((item) => item.from != instance.from);
           if (Date.now() - instance.createdAt > 300000) {
-            const recordinfo = await db.addRecordinfo(instance.from, instance.from, '0', '0');
-            const trans = web3.eth.sendTransaction(
-              {
-                from: instance.from,
-                to: instance.from,
-                value: 0,
-                gasPrice: '1000000000',
-                gas: '21000',
-                nonce: instance.nonce
-              },
-              async (_error, hash) => {
-                recordinfo.state = 1;
-                recordinfo.nonce = instance.nonce;
-                recordinfo.transactionhash = hash;
-                recordinfo.amount = '0';
-                await recordinfo.save();
-                databaePromise();
-              }
-            );
-            faucetaccount.balance = (+this.faucetarray[index].balance + config.once_amount - 1000000000 * 21000).toString();
-            await new Promise<void>((resolve) => {
-              databaePromise = resolve;
+            const recordinfo = await faucet.db.addRecordinfo(instance.from, instance.from, '0', '0');
+            const hash = await new Promise<string>((res, rej) => {
+              web3.eth.sendTransaction(
+                {
+                  from: instance.from,
+                  to: instance.from,
+                  value: 0,
+                  gasPrice: '1000000000',
+                  gas: '21000',
+                  nonce: instance.nonce
+                },
+                async (_error, hash) => {
+                  if (_error) {
+                    rej(_error);
+                  } else {
+                    res(hash);
+                  }
+                }
+              );
             });
-            await instance.destroy();
-            console.log('destroy');
+            recordinfo.state = 1;
+            recordinfo.nonce = instance.nonce;
+            recordinfo.transactionhash = hash;
+            recordinfo.amount = '0';
+            instance.state = -2;
+            faucetaccount.balance = this.faucetarray[index].balance.sub(new BN(1000000000 * 21000)).add(new BN(config.once_amoun));
+            await faucet.db.unifySave(recordinfo, instance);
           }
         } else {
           console.log('start to change state');
           instance.state = 2;
           faucetaccount.nonceNow = instance.nonce;
           faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
-          const accinstance = (await db.findAccount(faucetaccount.address))!;
+          const accinstance = (await faucet.db.findAccount(faucetaccount.address))!;
           accinstance.nonceNow = faucetaccount.nonceNow;
-          await instance.save();
-          await accinstance.save();
+          await faucet.db.unifySave(instance, accinstance);
           index++;
         }
       }
@@ -205,23 +211,22 @@ class Faucet {
           break;
         }
       }
-      if (notbusy && this.queueresolve) {
-        this.queueresolve();
-        this.queueresolve = undefined;
+      if (notbusy && this.requestresolve) {
+        this.requestresolve();
+        this.requestresolve = undefined;
       }
     }
   }
 }
 
 const faucet = new Faucet();
-const queue = new Queuestring();
 
 const timeLimitCheck = async (req: any, res: any) => {
-  if (!(await db.checkTimesLimit(req.query.address))) {
+  if (!(await faucet.db.checkTimesLimit(req.query.address))) {
     res.send({ ErrorCode: 2, message: 'Only 3 times within 24 hours' });
     return;
   }
-  if (queue.push(req, res) == -1) {
+  if (faucet.queue.requests.length > 100) {
     res.send({ ErrorCode: 7, message: 'System busy' });
   }
   const address = req.query.address.toLocaleLowerCase();
@@ -229,9 +234,11 @@ const timeLimitCheck = async (req: any, res: any) => {
     res.send({ ErrorCode: 3, message: 'Invalid address ,please check the format, example：/send?address=youraddress ' });
     return;
   }
-  if (faucet.requestresolve) {
-    faucet.requestresolve();
-    faucet.requestresolve = undefined;
+  if (faucet.queueresolve) {
+    faucet.queueresolve({ req, res });
+    faucet.queueresolve = undefined;
+  } else {
+    faucet.queue.push({ req, res });
   }
 };
 
