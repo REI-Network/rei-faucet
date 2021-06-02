@@ -8,12 +8,12 @@ export class faucetobject {
   nonceNow: number;
   gap: number;
   balance: BN;
-  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: string) {
+  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN) {
     this.address = address;
     this.gap = gap;
     this.nonceNow = nonceNow;
     this.nonceTodo = nonceTodo;
-    this.balance = new BN(balance);
+    this.balance = balance;
   }
 }
 
@@ -131,7 +131,7 @@ export class DB {
         });
         if (addrRecord === null) {
           const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
-          const balance = await web3.eth.getBalance(addr, blocknumber);
+          const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
           await AccountInfo.create({
             address: addr,
             nonceTodo: nonce,
@@ -140,15 +140,13 @@ export class DB {
           faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance));
         } else {
           const nonce = await web3.eth.getTransactionCount(addr);
-          const balance = await web3.eth.getBalance(addr, blocknumber);
+          const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
           addrRecord.nonceTodo = nonce > addrRecord.nonceTodo ? nonce : addrRecord.nonceTodo;
           addrRecord.nonceNow = nonce > addrRecord.nonceNow ? nonce : addrRecord.nonceNow;
           faucetarray.push(new faucetobject(addr, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance));
         }
       }
-      console.log('initTheAccounts 3');
       await transaction.commit();
-      console.log('initTheAccounts 4');
     } catch (error) {
       await transaction.rollback();
       throw error;

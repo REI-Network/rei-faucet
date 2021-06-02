@@ -1,6 +1,6 @@
 import express from 'express';
 import { DB, faucetobject } from './db';
-import { config, web3 } from './model';
+import { config, RecordInfo, web3 } from './model';
 import { BN } from 'ethereumjs-util';
 
 require('console-stamp')(console, {
@@ -49,7 +49,7 @@ class Faucet {
       this.addressArray.push(a.address);
     }
     const accounts = web3.eth.accounts.wallet;
-    await faucet.db.initAccounts(this.addressArray, this.faucetarray);
+    await this.db.initAccounts(this.addressArray, this.faucetarray);
     console.log('finished init');
   }
 
@@ -59,7 +59,8 @@ class Faucet {
       return a.gap - b.gap;
     });
     for (const a of this.faucetarray) {
-      if (+a.balance < config.once_amount * 2) {
+      const mincount = new BN(config.min_amount);
+      if (a.balance.lt(mincount)) {
         console.log('Balance not enough:', a.address);
         continue;
       }
@@ -74,7 +75,7 @@ class Faucet {
     await this.initPromise;
     console.log('start queue loop');
     while (1) {
-      let reqandres = faucet.queue.pop();
+      let reqandres = this.queue.pop();
       if (!reqandres) {
         reqandres = await new Promise<reqandres>((resolve) => {
           this.queueresolve = resolve;
@@ -91,13 +92,13 @@ class Faucet {
       const noncetosend = obj.nonceTodo;
       obj.nonceTodo++;
       const balancenow = obj.balance;
-      obj.balance = obj.balance.sub(new BN(config.once_amount + 1000000000 * 21000));
+      obj.balance = obj.balance.sub(new BN(config.once_amount).sub(new BN(1000000000 * 21000)));
       const { req, res } = reqandres;
       const ip = req.headers['x-real-ip'] || '1';
       //start to transfer transaction
       const fromaddress = obj.address;
       const toaddress = req.query.address.toLocaleLowerCase();
-      const recordinfo = await faucet.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
+      const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
       console.log('Start to transfer to ', toaddress);
       try {
         const hash = await new Promise<string>((resolve, reject) => {
@@ -112,10 +113,14 @@ class Faucet {
             },
             (_error, hash) => {
               if (_error) {
+                console.log('step 1');
                 reject(_error);
+                console.log('step 2');
               } else {
+                console.log('step 3');
                 console.log(hash);
                 resolve(hash);
+                console.log('step 4');
               }
             }
           );
@@ -124,18 +129,24 @@ class Faucet {
         recordinfo.nonce = noncetosend;
         recordinfo.transactionhash = hash;
         recordinfo.amount = config.once_amount;
-        res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
-        const accountinfo = (await faucet.db.findAccount(fromaddress))!;
+        console.log('step 5');
+        const accountinfo = (await this.db.findAccount(fromaddress))!;
         accountinfo.nonceTodo++;
-        await faucet.db.unifySave(recordinfo, accountinfo);
+        console.log('step 6');
+        await this.db.unifySave(recordinfo, accountinfo);
+        res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
         console.log('transaction hash: ', hash);
+        console.log('step 7');
       } catch (e) {
+        console.log('step 8');
         obj.nonceTodo = noncetosend;
         obj.balance = balancenow;
-        res.send({ ErrorCode: 4, message: 'Transfer failed' });
         recordinfo.state = -1;
-        console.error(e);
+        console.error(e, 'step11');
+        console.log('step 9');
         await recordinfo.save();
+        res.send({ ErrorCode: 4, message: 'Transfer failed' });
+        console.log('step 10');
       }
     }
   }
@@ -144,13 +155,14 @@ class Faucet {
     await this.initPromise;
     console.log('start receipt loop');
     while (1) {
-      const transArray = await faucet.db.findUnaffirmtranscation();
+      const transArray = await this.db.findUnaffirmtranscation();
       if (transArray.length === 0) {
-        (async () => {
+        await (async () => {
           setTimeout(() => {}, 5000);
         })();
         continue;
       }
+      const transMap = new Map<string, RecordInfo[]>();
       transArray.sort((a, b) => {
         if (a.from === b.from) {
           return a.nonce - b.nonce;
@@ -158,52 +170,60 @@ class Faucet {
           return a.from > b.from ? 1 : -1;
         }
       });
-      for (let index = 0; index !== -1 && index < transArray.length; ) {
-        const instance = transArray[index];
-        const faucetaccount = this.faucetarray.find((item) => item.address === instance.from)!;
-        const receipt = await web3.eth.getTransactionReceipt(instance.transactionhash);
-        if (receipt === null) {
-          index = transArray.findIndex((item) => item.from != instance.from);
-          if (Date.now() - instance.createdAt > 300000) {
-            const recordinfo = await faucet.db.addRecordinfo(instance.from, instance.from, '0', '0');
-            const hash = await new Promise<string>((res, rej) => {
-              web3.eth.sendTransaction(
-                {
-                  from: instance.from,
-                  to: instance.from,
-                  value: 0,
-                  gasPrice: '1000000000',
-                  gas: '21000',
-                  nonce: instance.nonce
-                },
-                async (_error, hash) => {
-                  if (_error) {
-                    rej(_error);
-                  } else {
-                    res(hash);
-                  }
-                }
-              );
-            });
-            recordinfo.state = 1;
-            recordinfo.nonce = instance.nonce;
-            recordinfo.transactionhash = hash;
-            recordinfo.amount = '0';
-            instance.state = -2;
-            faucetaccount.balance = this.faucetarray[index].balance.sub(new BN(1000000000 * 21000)).add(new BN(config.once_amoun));
-            await faucet.db.unifySave(recordinfo, instance);
-          }
+      for (const tran of transArray) {
+        const instance = transMap.get(tran.from);
+        if (!instance) {
+          transMap.set(tran.from, [tran]);
         } else {
-          console.log('start to change state');
-          instance.state = 2;
-          faucetaccount.nonceNow = instance.nonce;
-          faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
-          const accinstance = (await faucet.db.findAccount(faucetaccount.address))!;
-          accinstance.nonceNow = faucetaccount.nonceNow;
-          await faucet.db.unifySave(instance, accinstance);
-          index++;
+          instance.push(tran);
         }
       }
+      transMap.forEach(async (values, key) => {
+        for (const val of values) {
+          const faucetaccount = this.faucetarray.find((item) => item.address === val.from)!;
+          const receipt = await web3.eth.getTransactionReceipt(val.transactionhash);
+          if (receipt === null) {
+            if (Date.now() - val.createdAt > 300000) {
+              const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
+              const hash = await new Promise<string>((res, rej) => {
+                web3.eth.sendTransaction(
+                  {
+                    from: val.from,
+                    to: val.from,
+                    value: 0,
+                    gasPrice: '1000000000',
+                    gas: '21000',
+                    nonce: val.nonce
+                  },
+                  async (_error, hash) => {
+                    if (_error) {
+                      rej(_error);
+                    } else {
+                      res(hash);
+                    }
+                  }
+                );
+              });
+              recordinfo.state = 1;
+              recordinfo.nonce = val.nonce;
+              recordinfo.transactionhash = hash;
+              recordinfo.amount = '0';
+              val.state = -2;
+              faucetaccount.balance = faucetaccount.balance.sub(new BN(1000000000 * 21000)).add(new BN(config.once_amoun));
+              await this.db.unifySave(recordinfo, val);
+            }
+            break;
+          } else {
+            //console.log('start to change state');
+            val.state = 2;
+            faucetaccount.nonceNow = val.nonce;
+            faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
+            const accinstance = (await this.db.findAccount(faucetaccount.address))!;
+            accinstance.nonceNow = faucetaccount.nonceNow;
+            await this.db.unifySave(val, accinstance);
+          }
+        }
+      });
       let notbusy = 0;
       for (const a of this.faucetarray) {
         if (a.gap < 10) {
@@ -228,6 +248,7 @@ const timeLimitCheck = async (req: any, res: any) => {
   }
   if (faucet.queue.requests.length > 100) {
     res.send({ ErrorCode: 7, message: 'System busy' });
+    return;
   }
   const address = req.query.address.toLocaleLowerCase();
   if (!web3.utils.isAddress(address)) {

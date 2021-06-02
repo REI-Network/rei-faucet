@@ -50,7 +50,7 @@ RecordInfo.init(
     indexes: [
       {
         unique: true,
-        fields: ['from', 'createdAt', 'state']
+        fields: ['from', 'createdAt', 'transactionhash', 'state']
       }
     ]
   }
