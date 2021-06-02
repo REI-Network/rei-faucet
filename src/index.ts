@@ -96,7 +96,7 @@ class Faucet {
       const balancenow = obj.balance;
       obj.balance = obj.balance.sub(new BN(config.once_amount).sub(new BN(1000000000 * 21000)));
       const { req, res } = reqandres;
-      const ip = req.headers['x-real-ip'] || '1';
+      const ip = req.headers['x-real-ip'];
       //start to transfer transaction
       const fromaddress = obj.address;
       const walletindex = this.addressArray.indexOf(fromaddress);
@@ -242,11 +242,15 @@ const faucet = new Faucet();
 
 const timeLimitCheck = async (req: any, res: any) => {
   if (!(await faucet.db.checkAddressLimit(req.query.address))) {
-    res.send({ ErrorCode: 2, message: 'Only 3 times within 24 hours' });
+    res.send({ ErrorCode: 1, message: 'A address only 3 times within 24 hours' });
+    return;
+  }
+  if (!(await faucet.db.checkIpLimit(req.headers['x-real-ip']))) {
+    res.send({ ErrorCode: 2, message: 'A Ip only 10 times within 24 hours' });
     return;
   }
   if (faucet.queue.requests.length > 100) {
-    res.send({ ErrorCode: 7, message: 'System busy' });
+    res.send({ ErrorCode: 5, message: 'System busy' });
     return;
   }
   const address = req.query.address.toLocaleLowerCase();

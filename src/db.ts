@@ -60,7 +60,7 @@ export class DB {
     const transaction = await sequelize.transaction();
     const transRecords = await RecordInfo.findAll({
       order: [['id', 'DESC']],
-      limit: 5,
+      limit: 3,
       where: {
         [Op.and]: {
           to: address,
@@ -70,10 +70,31 @@ export class DB {
       transaction
     });
     await transaction.commit();
-    if (transRecords.length < 5) {
+    if (transRecords.length < 3) {
       return true;
     }
-    if (Date.now() - transRecords[4].createdAt >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - transRecords[2].createdAt >= 1000 * 60 * 60 * 24) {
+      return true;
+    }
+    return false;
+  }
+
+  async checkIpLimit(ip: string): Promise<boolean> {
+    await this.initPromise;
+    const transaction = await sequelize.transaction();
+    const transRecords = await RecordInfo.findAll({
+      order: [['id', 'DESC']],
+      limit: 10,
+      where: {
+        ip: ip
+      },
+      transaction
+    });
+    await transaction.commit();
+    if (transRecords.length < 10) {
+      return true;
+    }
+    if (Date.now() - transRecords[9].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;
