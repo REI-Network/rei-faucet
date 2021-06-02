@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
-import { RecordInfo, AccountInfo, sequelize, web3 } from './model';
+import { RecordInfo, AccountInfo, sequelize } from './model';
 import { BN } from 'ethereumjs-util';
+import Web3 from 'web3';
 
 export class faucetobject {
   address: string;
@@ -54,25 +55,25 @@ export class DB {
     }
   }
 
-  async checkTimesLimit(address: string): Promise<boolean> {
+  async checkAddressLimit(address: string): Promise<boolean> {
     await this.initPromise;
     const transaction = await sequelize.transaction();
     const transRecords = await RecordInfo.findAll({
       order: [['id', 'DESC']],
-      limit: 20,
+      limit: 5,
       where: {
         [Op.and]: {
           to: address,
-          state: { [Op.or]: [0, 1] }
+          state: { [Op.or]: [0, 1, 2] }
         }
       },
       transaction
     });
     await transaction.commit();
-    if (transRecords.length < 20) {
+    if (transRecords.length < 5) {
       return true;
     }
-    if (Date.now() - transRecords[19].createdAt >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - transRecords[4].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;
@@ -117,7 +118,7 @@ export class DB {
     }
   }
 
-  async initAccounts(address: string[], faucetarray: faucetobject[]) {
+  async initAccounts(address: string[], faucetarray: faucetobject[], web3: Web3) {
     await this.initPromise;
     const blocknumber = await web3.eth.getBlockNumber();
     const transaction = await sequelize.transaction();

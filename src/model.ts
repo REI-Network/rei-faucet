@@ -1,10 +1,8 @@
 import { Sequelize, Model, DataTypes } from 'sequelize';
 import process from 'process';
-import Web3 from 'web3';
 
 const configurl = process.env['CONFIG_URL'] || '../config.json';
 export const config = require(configurl);
-export const web3 = new Web3(config.server_provider);
 export const sequelize = new Sequelize(config.database_url, { logging: false });
 
 export class RecordInfo extends Model {}
@@ -50,7 +48,7 @@ RecordInfo.init(
     indexes: [
       {
         unique: true,
-        fields: ['from', 'createdAt', 'transactionhash', 'state']
+        fields: ['from', 'to', 'createdAt', 'transactionhash', 'state']
       }
     ]
   }

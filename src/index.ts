@@ -1,8 +1,9 @@
 import express from 'express';
 import { DB, faucetobject } from './db';
-import { config, RecordInfo, web3 } from './model';
+import { config, RecordInfo } from './model';
 import { BN } from 'ethereumjs-util';
-
+import axios from 'axios';
+import Web3 from 'web3';
 require('console-stamp')(console, {
   format: ':date(yyyy/mm/dd HH:MM:ss.l):label'
 });
@@ -12,6 +13,7 @@ type reqandres = {
   res: { send: ({}) => void };
 };
 const app = express();
+const web3 = new Web3(config.server_provider);
 class Queuestring {
   requests: reqandres[] = [];
   push(instance: reqandres): number {
@@ -49,7 +51,7 @@ class Faucet {
       this.addressArray.push(a.address);
     }
     const accounts = web3.eth.accounts.wallet;
-    await this.db.initAccounts(this.addressArray, this.faucetarray);
+    await this.db.initAccounts(this.addressArray, this.faucetarray, web3);
     console.log('finished init');
   }
 
@@ -97,56 +99,50 @@ class Faucet {
       const ip = req.headers['x-real-ip'] || '1';
       //start to transfer transaction
       const fromaddress = obj.address;
+      const walletindex = this.addressArray.indexOf(fromaddress);
+      const privateKey = web3.eth.accounts.wallet[walletindex].privateKey;
       const toaddress = req.query.address.toLocaleLowerCase();
       const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
       console.log('Start to transfer to ', toaddress);
       try {
-        const hash = await new Promise<string>((resolve, reject) => {
-          web3.eth.sendTransaction(
-            {
-              from: fromaddress,
-              to: toaddress,
-              value: config.once_amount,
-              gasPrice: '1000000000',
-              gas: '21000',
-              nonce: noncetosend
-            },
-            (_error, hash) => {
-              if (_error) {
-                console.log('step 1');
-                reject(_error);
-                console.log('step 2');
-              } else {
-                console.log('step 3');
-                console.log(hash);
-                resolve(hash);
-                console.log('step 4');
-              }
-            }
-          );
+        const signedTransaction = await web3.eth.accounts.signTransaction(
+          {
+            from: fromaddress,
+            to: toaddress,
+            value: config.once_amount,
+            gasPrice: '1000000000',
+            gas: '21000',
+            nonce: noncetosend
+          },
+          privateKey
+        );
+        const result = await axios({
+          method: 'post',
+          url: config.server_provider,
+          data: {
+            jsonrpc: '2.0',
+            method: 'eth_sendRawTransaction',
+            params: [signedTransaction.rawTransaction],
+            id: 1
+          }
         });
+        const hash = result.data.result;
         recordinfo.state = 1;
         recordinfo.nonce = noncetosend;
         recordinfo.transactionhash = hash;
         recordinfo.amount = config.once_amount;
-        console.log('step 5');
         const accountinfo = (await this.db.findAccount(fromaddress))!;
         accountinfo.nonceTodo++;
-        console.log('step 6');
         await this.db.unifySave(recordinfo, accountinfo);
         res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
         console.log('transaction hash: ', hash);
-        console.log('step 7');
       } catch (e) {
-        console.log('step 8');
         obj.nonceTodo = noncetosend;
         obj.balance = balancenow;
         recordinfo.state = -1;
-        console.error(e, 'step11');
-        console.log('step 9');
+        console.error(e);
         await recordinfo.save();
         res.send({ ErrorCode: 4, message: 'Transfer failed' });
-        console.log('step 10');
       }
     }
   }
@@ -178,8 +174,8 @@ class Faucet {
           instance.push(tran);
         }
       }
-      transMap.forEach(async (values, key) => {
-        for (const val of values) {
+      for (const key of transMap.keys()) {
+        for (const val of transMap.get(key)!) {
           const faucetaccount = this.faucetarray.find((item) => item.address === val.from)!;
           const receipt = await web3.eth.getTransactionReceipt(val.transactionhash);
           if (receipt === null) {
@@ -223,7 +219,7 @@ class Faucet {
             await this.db.unifySave(val, accinstance);
           }
         }
-      });
+      }
       let notbusy = 0;
       for (const a of this.faucetarray) {
         if (a.gap < 10) {
@@ -235,6 +231,9 @@ class Faucet {
         this.requestresolve();
         this.requestresolve = undefined;
       }
+      await (async () => {
+        setTimeout(() => {}, 5000);
+      })();
     }
   }
 }
@@ -242,7 +241,7 @@ class Faucet {
 const faucet = new Faucet();
 
 const timeLimitCheck = async (req: any, res: any) => {
-  if (!(await faucet.db.checkTimesLimit(req.query.address))) {
+  if (!(await faucet.db.checkAddressLimit(req.query.address))) {
     res.send({ ErrorCode: 2, message: 'Only 3 times within 24 hours' });
     return;
   }

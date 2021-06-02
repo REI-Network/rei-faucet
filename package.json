@@ -23,6 +23,7 @@
     "@commitlint/cli": "^12.1.4",
     "@commitlint/config-angular": "^12.1.4",
     "@typescript-eslint/parser": "^4.26.0",
+    "axios": "^0.21.1",
     "console-stamp": "^3.0.2",
     "dotenv": "^9.0.2",
     "eslint": "^7.27.0",
