@@ -74,6 +74,31 @@ export class Faucet {
     console.log('finished init');
   }
 
+  async sendTransaction(from: string, to: string, count: string, nonce: number, privatekey: string) {
+    const signedTransaction = await web3.eth.accounts.signTransaction(
+      {
+        from: from,
+        to: to,
+        value: config.once_amount,
+        gasPrice: '1000000000',
+        gas: '21000',
+        nonce: nonce
+      },
+      privatekey
+    );
+    const result = await axios({
+      method: 'post',
+      url: config.server_provider,
+      data: {
+        jsonrpc: '2.0',
+        method: 'eth_sendRawTransaction',
+        params: [signedTransaction.rawTransaction],
+        id: 1
+      }
+    });
+    return result;
+  }
+
   async findSuitableAccount() {
     await this.initPromise;
     this.faucetarray.sort((a, b) => {
@@ -122,37 +147,16 @@ export class Faucet {
       const privateKey = web3.eth.accounts.wallet[walletindex].privateKey;
       const toaddress = req.query.address.toLocaleLowerCase();
       const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
-      console.log('Start to transfer to ', toaddress);
+      console.log('Start to transfer to', toaddress);
       try {
-        const signedTransaction = await web3.eth.accounts.signTransaction(
-          {
-            from: fromaddress,
-            to: toaddress,
-            value: config.once_amount,
-            gasPrice: '1000000000',
-            gas: '21000',
-            nonce: noncetosend
-          },
-          privateKey
-        );
-        const result = await axios({
-          method: 'post',
-          url: config.server_provider,
-          data: {
-            jsonrpc: '2.0',
-            method: 'eth_sendRawTransaction',
-            params: [signedTransaction.rawTransaction],
-            id: 1
-          }
-        });
+        const result = await this.sendTransaction(fromaddress, toaddress, config.once_amount, noncetosend, privateKey);
         const hash = result.data.result;
         recordinfo.state = 1;
         recordinfo.nonce = noncetosend;
         recordinfo.transactionhash = hash;
         recordinfo.amount = config.once_amount;
-        const accountinfo = (await this.db.findAccount(fromaddress))!;
-        accountinfo.nonceTodo++;
-        await this.db.unifySave(recordinfo, accountinfo);
+        await this.db.updateNonce(fromaddress, obj.nonceTodo, 0);
+        await this.db.saveRecordInfos(recordinfo);
         res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
         console.log('transaction hash: ', hash);
       } catch (e) {
@@ -160,7 +164,7 @@ export class Faucet {
         obj.balance = balancenow;
         recordinfo.state = -1;
         console.error(e);
-        await recordinfo.save();
+        await this.db.saveRecordInfos(recordinfo);
         res.send({ ErrorCode: 4, message: 'Transfer failed' });
       }
     }
@@ -199,33 +203,17 @@ export class Faucet {
           const receipt = await web3.eth.getTransactionReceipt(val.transactionhash);
           if (receipt === null) {
             if (Date.now() - val.createdAt > 300000) {
+              const walletindex = this.addressArray.indexOf(key);
+              const privateKey = web3.eth.accounts.wallet[walletindex].privateKey;
               const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
-              const hash = await new Promise<string>((res, rej) => {
-                web3.eth.sendTransaction(
-                  {
-                    from: val.from,
-                    to: val.from,
-                    value: 0,
-                    gasPrice: '1000000000',
-                    gas: '21000',
-                    nonce: val.nonce
-                  },
-                  async (_error, hash) => {
-                    if (_error) {
-                      rej(_error);
-                    } else {
-                      res(hash);
-                    }
-                  }
-                );
-              });
+              const result = await this.sendTransaction(val.from, val.from, '0', val.nonce, privateKey);
               recordinfo.state = 1;
               recordinfo.nonce = val.nonce;
-              recordinfo.transactionhash = hash;
+              recordinfo.transactionhash = result.data.result;
               recordinfo.amount = '0';
               val.state = -2;
               faucetaccount.balance = faucetaccount.balance.add(new BN(config.once_amoun));
-              await this.db.unifySave(recordinfo, val);
+              await this.db.saveRecordInfos(recordinfo, val);
             }
             break;
           } else {
@@ -233,9 +221,8 @@ export class Faucet {
             val.state = 2;
             faucetaccount.nonceNow = val.nonce;
             faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
-            const accinstance = (await this.db.findAccount(faucetaccount.address))!;
-            accinstance.nonceNow = faucetaccount.nonceNow;
-            await this.db.unifySave(val, accinstance);
+            await this.db.updateNonce(faucetaccount.address, faucetaccount.nonceNow, 0);
+            await this.db.saveRecordInfos(val);
           }
         }
       }

@@ -6,7 +6,6 @@ import { faucetobject } from './types';
 
 export class DB {
   private initPromise!: Promise<void>;
-
   constructor() {
     this.initPromise = this.init();
   }
@@ -86,7 +85,7 @@ export class DB {
     return false;
   }
 
-  async findAccount(addr: string) {
+  async updateNonce(addr: string, nonceupdate: number, type: number) {
     await this.initPromise;
     const transaction = await sequelize.transaction();
     try {
@@ -96,8 +95,12 @@ export class DB {
         },
         transaction
       });
+      if (type === 0) {
+        addrRecord!.nonceTodo = nonceupdate;
+      } else {
+        addrRecord!.nonceNow = nonceupdate;
+      }
       await transaction.commit();
-      return addrRecord;
     } catch (error) {
       await transaction.rollback();
       throw error;
@@ -161,11 +164,13 @@ export class DB {
     }
   }
 
-  async unifySave(recordinfo: RecordInfo | AccountInfo, accountinfo: RecordInfo | AccountInfo) {
+  async saveRecordInfos(recordinfo: RecordInfo, recordinfo1?: RecordInfo) {
     const transaction = await sequelize.transaction();
     try {
       await recordinfo.save({ transaction });
-      await accountinfo.save({ transaction });
+      if (recordinfo1) {
+        await recordinfo1.save({ transaction });
+      }
       await transaction.commit();
     } catch (error) {
       await transaction.rollback();
