@@ -153,9 +153,9 @@ class Faucet {
     while (1) {
       const transArray = await this.db.findUnaffirmtranscation();
       if (transArray.length === 0) {
-        await (async () => {
-          setTimeout(() => {}, 5000);
-        })();
+        await new Promise<void>((resovle) => {
+          setTimeout(resovle, 5000);
+        });
         continue;
       }
       const transMap = new Map<string, RecordInfo[]>();
@@ -231,9 +231,9 @@ class Faucet {
         this.requestresolve();
         this.requestresolve = undefined;
       }
-      await (async () => {
-        setTimeout(() => {}, 5000);
-      })();
+      await new Promise<void>((resovle) => {
+        setTimeout(resovle, 5000);
+      });
     }
   }
 }
