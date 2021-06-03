@@ -2,21 +2,7 @@ import { Op } from 'sequelize';
 import { RecordInfo, AccountInfo, sequelize } from './model';
 import { BN } from 'ethereumjs-util';
 import Web3 from 'web3';
-
-export class faucetobject {
-  address: string;
-  nonceTodo: number;
-  nonceNow: number;
-  gap: number;
-  balance: BN;
-  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN) {
-    this.address = address;
-    this.gap = gap;
-    this.nonceNow = nonceNow;
-    this.nonceTodo = nonceTodo;
-    this.balance = balance;
-  }
-}
+import { faucetobject } from './types';
 
 export class DB {
   private initPromise!: Promise<void>;
