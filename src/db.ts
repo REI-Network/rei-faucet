@@ -143,14 +143,17 @@ export class DB {
         if (addrRecord === null) {
           const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
           const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
-          await AccountInfo.create({
-            address: addr,
-            nonceTodo: nonce,
-            nonceNow: nonce
-          });
+          await AccountInfo.create(
+            {
+              address: addr,
+              nonceTodo: nonce,
+              nonceNow: nonce
+            },
+            { transaction }
+          );
           faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance));
         } else {
-          const nonce = await web3.eth.getTransactionCount(addr);
+          const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
           const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
           addrRecord.nonceTodo = nonce > addrRecord.nonceTodo ? nonce : addrRecord.nonceTodo;
           addrRecord.nonceNow = nonce > addrRecord.nonceNow ? nonce : addrRecord.nonceNow;
