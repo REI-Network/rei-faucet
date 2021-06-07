@@ -61,7 +61,10 @@ export class Faucet {
       await this.initPromise;
       return;
     }
-    await this.initaccounts(process.env['PRIVATEKEY']!.split(','));
+    if (!process.env['PRIVATEKEY']) {
+      process.exit(1);
+    }
+    await this.initaccounts(process.env['PRIVATEKEY'].split(','));
   }
 
   async initaccounts(privatekeys: string[]) {
@@ -221,7 +224,7 @@ export class Faucet {
             val.state = 2;
             faucetaccount.nonceNow = val.nonce;
             faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
-            await this.db.updateNonce(faucetaccount.address, faucetaccount.nonceNow, 0);
+            await this.db.updateNonce(faucetaccount.address, faucetaccount.nonceNow, 1);
             await this.db.saveRecordInfos(val);
           }
         }
