@@ -85,28 +85,6 @@ export class DB {
     return false;
   }
 
-  async updateNonce(addr: string, nonceupdate: number, type: number) {
-    await this.initPromise;
-    const transaction = await sequelize.transaction();
-    try {
-      const addrRecord = await AccountInfo.findOne({
-        where: {
-          address: addr
-        },
-        transaction
-      });
-      if (type === 0) {
-        addrRecord!.nonceTodo = nonceupdate;
-      } else {
-        addrRecord!.nonceNow = nonceupdate;
-      }
-      await transaction.commit();
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-
   async findUnaffirmtranscation() {
     await this.initPromise;
     const transaction = await sequelize.transaction();
@@ -143,7 +121,7 @@ export class DB {
         if (addrRecord === null) {
           const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
           const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
-          await AccountInfo.create(
+          const accountinfo = await AccountInfo.create(
             {
               address: addr,
               nonceTodo: nonce,
@@ -151,13 +129,13 @@ export class DB {
             },
             { transaction }
           );
-          faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance));
+          faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance, this, accountinfo));
         } else {
           const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
           const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
           addrRecord.nonceTodo = nonce > addrRecord.nonceTodo ? nonce : addrRecord.nonceTodo;
           addrRecord.nonceNow = nonce > addrRecord.nonceNow ? nonce : addrRecord.nonceNow;
-          faucetarray.push(new faucetobject(addr, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance));
+          faucetarray.push(new faucetobject(addr, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance, this, addrRecord));
         }
       }
       await transaction.commit();
@@ -167,7 +145,7 @@ export class DB {
     }
   }
 
-  async saveRecordInfos(recordinfo: RecordInfo, recordinfo1?: RecordInfo) {
+  async saveInfos(recordinfo: RecordInfo | AccountInfo, recordinfo1?: RecordInfo | AccountInfo) {
     const transaction = await sequelize.transaction();
     try {
       await recordinfo.save({ transaction });

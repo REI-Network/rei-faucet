@@ -2,7 +2,7 @@ import { BN } from 'ethereumjs-util';
 import Web3 from 'web3';
 import { DB } from './db';
 import axios from 'axios';
-import { config, RecordInfo } from './model';
+import { AccountInfo, config, RecordInfo } from './model';
 
 const web3 = new Web3(config.server_provider);
 
@@ -17,12 +17,21 @@ export class faucetobject {
   nonceNow: number;
   gap: number;
   balance: BN;
-  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN) {
+  db: DB;
+  accountinfo: AccountInfo;
+  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN, db: DB, accountinfo: AccountInfo) {
     this.address = address;
     this.gap = gap;
     this.nonceNow = nonceNow;
     this.nonceTodo = nonceTodo;
     this.balance = balance;
+    this.db = db;
+    this.accountinfo = accountinfo;
+  }
+  async persist() {
+    this.accountinfo.nonceNow = this.nonceNow;
+    this.accountinfo.nonceTodo = this.nonceTodo;
+    this.db.saveInfos(this.accountinfo);
   }
 }
 
@@ -158,8 +167,8 @@ export class Faucet {
         recordinfo.nonce = noncetosend;
         recordinfo.transactionhash = hash;
         recordinfo.amount = config.once_amount;
-        await this.db.updateNonce(fromaddress, obj.nonceTodo, 0);
-        await this.db.saveRecordInfos(recordinfo);
+        await obj.persist();
+        await this.db.saveInfos(recordinfo);
         res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
         console.log('transaction hash: ', hash);
       } catch (e) {
@@ -167,7 +176,7 @@ export class Faucet {
         obj.balance = balancenow;
         recordinfo.state = -1;
         console.error(e);
-        await this.db.saveRecordInfos(recordinfo);
+        await this.db.saveInfos(recordinfo);
         res.send({ ErrorCode: 4, message: 'Transfer failed' });
       }
     }
@@ -216,7 +225,7 @@ export class Faucet {
               recordinfo.amount = '0';
               val.state = -2;
               faucetaccount.balance = faucetaccount.balance.add(new BN(config.once_amoun));
-              await this.db.saveRecordInfos(recordinfo, val);
+              await this.db.saveInfos(recordinfo, val);
             }
             break;
           } else {
@@ -224,8 +233,8 @@ export class Faucet {
             val.state = 2;
             faucetaccount.nonceNow = val.nonce;
             faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
-            await this.db.updateNonce(faucetaccount.address, faucetaccount.nonceNow, 1);
-            await this.db.saveRecordInfos(val);
+            await faucetaccount.persist();
+            await this.db.saveInfos(val);
           }
         }
       }
