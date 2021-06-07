@@ -114,6 +114,9 @@ export class Faucet {
   async findSuitableAccount() {
     await this.initPromise;
     this.faucetarray.sort((a, b) => {
+      if (a.gap === b.gap) {
+        return a.nonceNow - b.nonceTodo;
+      }
       return a.gap - b.gap;
     });
     for (const a of this.faucetarray) {
@@ -212,7 +215,26 @@ export class Faucet {
       for (const key of transMap.keys()) {
         for (const val of transMap.get(key)!) {
           const faucetaccount = this.faucetarray.find((item) => item.address === val.from)!;
-          const receipt = await web3.eth.getTransactionReceipt(val.transactionhash);
+          let result = undefined;
+          try {
+            result = await axios({
+              method: 'post',
+              url: config.server_provider,
+              data: {
+                jsonrpc: '2.0',
+                method: 'eth_getTransactionReceipt',
+                params: [val.transactionhash],
+                id: 1
+              }
+            });
+          } catch (error) {
+            result = undefined;
+            console.log(error);
+          }
+          if (result === undefined) {
+            break;
+          }
+          const receipt = result.data.result;
           if (receipt === null) {
             if (Date.now() - val.createdAt > 300000) {
               const walletindex = this.addressArray.indexOf(key);
