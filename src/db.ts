@@ -90,7 +90,8 @@ export class DB {
     const transaction = await sequelize.transaction();
     try {
       const transRecords = await RecordInfo.findAll({
-        order: [['id', 'DESC']],
+        order: [['id', 'ASC']],
+        limit: 100,
         where: {
           [Op.and]: {
             state: 1

@@ -1,15 +1,16 @@
 import { BN } from 'ethereumjs-util';
 import Web3 from 'web3';
 import { DB } from './db';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import { AccountInfo, config, RecordInfo } from './model';
 
 const web3 = new Web3(config.server_provider);
 
-export type reqandres = {
+type reqandres = {
   req: { headers: { [headers: string]: string }; query: { address: string } };
   res: { send: (arg0: any) => void };
 };
+type axioObject = { method: string; params: string; resolve: (value: AxiosResponse<any>) => void };
 
 export class faucetobject {
   address: string;
@@ -53,12 +54,29 @@ export class Queuestring {
   }
 }
 
+class QueueObject {
+  queueresolve: undefined | ((value: axioObject) => void) = undefined;
+  requests: axioObject[] = [];
+  push(instance: axioObject) {
+    if (this.queueresolve) {
+      this.queueresolve(instance);
+      this.queueresolve = undefined;
+    }
+    this.requests.push(instance);
+  }
+  pop() {
+    return this.requests.shift();
+  }
+}
+
 export class Faucet {
   private initPromise!: Promise<void>;
   faucetarray: Array<faucetobject> = [];
   requestresolve: undefined | (() => void) = undefined;
   queue = new Queuestring();
+  objectQueue = new QueueObject();
   db = new DB();
+  timestamp = Math.floor(Date.now() / 1000);
 
   constructor() {
     this.initPromise = this.init();
@@ -84,7 +102,7 @@ export class Faucet {
     console.log('finished init');
   }
 
-  async sendTransaction(from: string, to: string, count: string, nonce: number, gasPrice: string, privatekey: string) {
+  async getRawTransaction(from: string, to: string, count: string, nonce: number, gasPrice: string, privatekey: string) {
     const signedTransaction = await web3.eth.accounts.signTransaction(
       {
         from: from,
@@ -96,17 +114,7 @@ export class Faucet {
       },
       privatekey
     );
-    const result = await axios({
-      method: 'post',
-      url: config.server_provider,
-      data: {
-        jsonrpc: '2.0',
-        method: 'eth_sendRawTransaction',
-        params: [signedTransaction.rawTransaction],
-        id: 1
-      }
-    });
-    return result;
+    return signedTransaction.rawTransaction;
   }
 
   async findSuitableAccount() {
@@ -160,7 +168,10 @@ export class Faucet {
       const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
       console.log('Start to transfer to', toaddress);
       try {
-        const result = await this.sendTransaction(fromaddress, toaddress, config.once_amount, noncetosend, config.gas_price_usual, obj.privateKey);
+        const rawhash = await this.getRawTransaction(fromaddress, toaddress, config.once_amount, noncetosend, config.gas_price_usual, obj.privateKey);
+        const result = await new Promise<AxiosResponse<any>>((resolve) => {
+          this.objectQueue.push({ method: 'eth_sendRawTransaction', params: rawhash!, resolve: resolve });
+        });
         const hash = result.data.result;
         recordinfo.state = 1;
         recordinfo.nonce = noncetosend;
@@ -212,30 +223,17 @@ export class Faucet {
       for (const key of transMap.keys()) {
         for (const val of transMap.get(key)!) {
           const faucetaccount = this.faucetarray.find((item) => item.address === val.from)!;
-          let result = undefined;
-          try {
-            result = await axios({
-              method: 'post',
-              url: config.server_provider,
-              data: {
-                jsonrpc: '2.0',
-                method: 'eth_getTransactionReceipt',
-                params: [val.transactionhash],
-                id: 1
-              }
-            });
-          } catch (error) {
-            result = undefined;
-            console.log(error);
-          }
-          if (result === undefined) {
-            break;
-          }
+          const result = await new Promise<AxiosResponse<any>>((resolve) => {
+            this.objectQueue.push({ method: 'eth_getTransactionReceipt', params: val.transactionhash, resolve: resolve });
+          });
           const receipt = result.data.result;
           if (receipt === null) {
             if (Date.now() - val.createdAt > 300000) {
               const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
-              const result = await this.sendTransaction(val.from, val.from, '0', val.nonce, config.gas_price_resend, faucetaccount.privateKey);
+              const rawhash = await this.getRawTransaction(val.from, val.from, '0', val.nonce, config.gas_price_resend, faucetaccount.privateKey);
+              const result = await new Promise<AxiosResponse<any>>((resolve) => {
+                this.objectQueue.push({ method: 'eth_sendRawTransaction', params: rawhash!, resolve: resolve });
+              });
               recordinfo.state = 1;
               recordinfo.nonce = val.nonce;
               recordinfo.transactionhash = result.data.result;
@@ -268,6 +266,49 @@ export class Faucet {
       await new Promise<void>((resovle) => {
         setTimeout(resovle, 5000);
       });
+    }
+  }
+
+  async timesLimitLoop() {
+    await this.initPromise;
+    let counter = 0;
+    console.log('start timelimit loop');
+    while (1) {
+      counter++;
+      const timenow = Math.floor(Date.now() / 1000);
+      if (this.timestamp === timenow) {
+        if (counter >= 10) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 1000);
+          });
+          counter = 0;
+          this.timestamp = Math.floor(Date.now() / 1000);
+        }
+      } else {
+        this.timestamp = timenow;
+        counter = 0;
+      }
+      let instance = this.objectQueue.pop();
+      if (!instance) {
+        instance = await new Promise<axioObject>((resolve) => {
+          this.objectQueue.queueresolve = resolve;
+        });
+      }
+      try {
+        const result = await axios({
+          method: 'post',
+          url: config.server_provider,
+          data: {
+            jsonrpc: '2.0',
+            method: instance.method,
+            params: [instance.params],
+            id: 1
+          }
+        });
+        instance.resolve(result);
+      } catch (error) {
+        console.log(error);
+      }
     }
   }
 }
