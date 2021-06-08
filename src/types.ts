@@ -8,7 +8,7 @@ const web3 = new Web3(config.server_provider);
 
 export type reqandres = {
   req: { headers: { [headers: string]: string }; query: { address: string } };
-  res: { send: ({}) => void };
+  res: { send: (arg0: any) => void };
 };
 
 export class faucetobject {
@@ -31,7 +31,7 @@ export class faucetobject {
   async persist() {
     this.accountinfo.nonceNow = this.nonceNow;
     this.accountinfo.nonceTodo = this.nonceTodo;
-    this.db.saveInfos(this.accountinfo);
+    await this.db.saveInfos(this.accountinfo);
   }
 }
 
@@ -43,7 +43,7 @@ export class Queuestring {
       this.queueresolve(instance);
       this.queueresolve = undefined;
     } else {
-      return this.requests.push(instance);
+      this.requests.push(instance);
     }
   }
   pop() {
@@ -53,11 +53,11 @@ export class Queuestring {
 
 export class Faucet {
   private initPromise!: Promise<void>;
-  addressArray: string[] = [];
-  faucetarray = new Array<faucetobject>();
+  faucetarray: Array<faucetobject> = [];
   requestresolve: undefined | (() => void) = undefined;
   queue = new Queuestring();
   db = new DB();
+  addressToPrivatekey: Map<string, string> = new Map<string, string>();
 
   constructor() {
     this.initPromise = this.init();
@@ -70,29 +70,25 @@ export class Faucet {
       await this.initPromise;
       return;
     }
-    if (!process.env['PRIVATEKEY']) {
-      process.exit(1);
-    }
-    await this.initaccounts(process.env['PRIVATEKEY'].split(','));
+    await this.initaccounts(process.env['PRIVATEKEY']!.split(','));
   }
 
   async initaccounts(privatekeys: string[]) {
     for (const privatekey of privatekeys) {
-      const a = web3.eth.accounts.wallet.add(web3.eth.accounts.privateKeyToAccount(privatekey));
-      this.addressArray.push(a.address);
+      this.addressToPrivatekey.set(web3.eth.accounts.privateKeyToAccount(privatekey).address, privatekey);
     }
     const accounts = web3.eth.accounts.wallet;
-    await this.db.initAccounts(this.addressArray, this.faucetarray, web3);
+    await this.db.initAccounts([...this.addressToPrivatekey.keys()], this.faucetarray, web3);
     console.log('finished init');
   }
 
-  async sendTransaction(from: string, to: string, count: string, nonce: number, privatekey: string) {
+  async sendTransaction(from: string, to: string, count: string, nonce: number, gasPrice: string, privatekey: string) {
     const signedTransaction = await web3.eth.accounts.signTransaction(
       {
         from: from,
         to: to,
         value: config.once_amount,
-        gasPrice: '1000000000',
+        gasPrice: gasPrice,
         gas: '21000',
         nonce: nonce
       },
@@ -119,17 +115,17 @@ export class Faucet {
       }
       return a.gap - b.gap;
     });
+    const min_amount = new BN(config.min_amount);
     for (const a of this.faucetarray) {
-      const mincount = new BN(config.min_amount);
-      if (a.balance.lt(mincount)) {
+      if (a.balance.lt(min_amount)) {
         console.log('Balance not enough:', a.address);
         continue;
       }
       if (a.gap < 11) {
-        return this.faucetarray.indexOf(a);
+        return a;
       }
     }
-    return -1;
+    return undefined;
   }
 
   async queueLoop() {
@@ -143,13 +139,13 @@ export class Faucet {
         });
       }
       let index = await this.findSuitableAccount();
-      if (index === -1) {
+      if (index === undefined) {
         await new Promise<void>((resolve) => {
           this.requestresolve = resolve;
         });
         index = await this.findSuitableAccount();
       }
-      let obj = this.faucetarray[index];
+      let obj = index!;
       const noncetosend = obj.nonceTodo;
       obj.nonceTodo++;
       const balancenow = obj.balance;
@@ -158,13 +154,12 @@ export class Faucet {
       const ip = req.headers['x-real-ip'];
       //start to transfer transaction
       const fromaddress = obj.address;
-      const walletindex = this.addressArray.indexOf(fromaddress);
-      const privateKey = web3.eth.accounts.wallet[walletindex].privateKey;
+      const privateKey = this.addressToPrivatekey.get(fromaddress)!;
       const toaddress = req.query.address.toLocaleLowerCase();
       const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
       console.log('Start to transfer to', toaddress);
       try {
-        const result = await this.sendTransaction(fromaddress, toaddress, config.once_amount, noncetosend, privateKey);
+        const result = await this.sendTransaction(fromaddress, toaddress, config.once_amount, noncetosend, '1000000000', privateKey);
         const hash = result.data.result;
         recordinfo.state = 1;
         recordinfo.nonce = noncetosend;
@@ -177,6 +172,7 @@ export class Faucet {
       } catch (e) {
         obj.nonceTodo = noncetosend;
         obj.balance = balancenow;
+        await obj.persist();
         recordinfo.state = -1;
         console.error(e);
         await this.db.saveInfos(recordinfo);
@@ -237,10 +233,9 @@ export class Faucet {
           const receipt = result.data.result;
           if (receipt === null) {
             if (Date.now() - val.createdAt > 300000) {
-              const walletindex = this.addressArray.indexOf(key);
-              const privateKey = web3.eth.accounts.wallet[walletindex].privateKey;
+              const privateKey = this.addressToPrivatekey.get(val.from)!;
               const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
-              const result = await this.sendTransaction(val.from, val.from, '0', val.nonce, privateKey);
+              const result = await this.sendTransaction(val.from, val.from, '0', val.nonce, '1200000000', privateKey);
               recordinfo.state = 1;
               recordinfo.nonce = val.nonce;
               recordinfo.transactionhash = result.data.result;
@@ -251,7 +246,6 @@ export class Faucet {
             }
             break;
           } else {
-            //console.log('start to change state');
             val.state = 2;
             faucetaccount.nonceNow = val.nonce;
             faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;

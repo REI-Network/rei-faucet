@@ -6,10 +6,15 @@ require('console-stamp')(console, {
   format: ':date(yyyy/mm/dd HH:MM:ss.l):label'
 });
 
+if (!process.env['PRIVATEKEY']) {
+  process.exit(1);
+}
 const app = express();
 const web3 = new Web3(config.server_provider);
 const faucet = new Faucet();
 
+const port = Number(process.env.PORT) || 20001;
+const localhost = process.env.LOCALHOST || '127.0.0.1';
 const timeLimitCheck = async (req: any, res: any) => {
   try {
     if (!(await faucet.db.checkAddressLimit(req.query.address))) {
@@ -37,6 +42,6 @@ const timeLimitCheck = async (req: any, res: any) => {
 };
 
 app.use('/send', timeLimitCheck);
-app.listen(20001, function () {
+app.listen(port, localhost, function () {
   console.log('Server has been started');
 });
