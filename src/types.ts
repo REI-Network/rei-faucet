@@ -82,6 +82,7 @@ export class Faucet {
     this.initPromise = this.init();
     this.queueLoop();
     this.receiptLoop();
+    this.timesLimitLoop();
   }
 
   async init() {
@@ -306,6 +307,7 @@ export class Faucet {
           }
         });
         instance.resolve(result);
+        console.log('wuhu~');
       } catch (error) {
         console.log(error);
       }
