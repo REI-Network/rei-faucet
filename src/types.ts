@@ -18,8 +18,9 @@ export class faucetobject {
   gap: number;
   balance: BN;
   db: DB;
+  privateKey: string;
   accountinfo: AccountInfo;
-  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN, db: DB, accountinfo: AccountInfo) {
+  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN, db: DB, accountinfo: AccountInfo, privateKey: string) {
     this.address = address;
     this.gap = gap;
     this.nonceNow = nonceNow;
@@ -27,6 +28,7 @@ export class faucetobject {
     this.balance = balance;
     this.db = db;
     this.accountinfo = accountinfo;
+    this.privateKey = privateKey;
   }
   async persist() {
     this.accountinfo.nonceNow = this.nonceNow;
@@ -57,7 +59,6 @@ export class Faucet {
   requestresolve: undefined | (() => void) = undefined;
   queue = new Queuestring();
   db = new DB();
-  addressToPrivatekey: Map<string, string> = new Map<string, string>();
 
   constructor() {
     this.initPromise = this.init();
@@ -74,11 +75,12 @@ export class Faucet {
   }
 
   async initaccounts(privatekeys: string[]) {
+    const accountArray: { address: string; privatekey: string }[] = [];
     for (const privatekey of privatekeys) {
-      this.addressToPrivatekey.set(web3.eth.accounts.privateKeyToAccount(privatekey).address, privatekey);
+      const address = web3.eth.accounts.privateKeyToAccount(privatekey).address;
+      accountArray.push({ address, privatekey });
     }
-    const accounts = web3.eth.accounts.wallet;
-    await this.db.initAccounts([...this.addressToPrivatekey.keys()], this.faucetarray, web3);
+    await this.db.initAccounts(accountArray, this.faucetarray, web3);
     console.log('finished init');
   }
 
@@ -138,14 +140,14 @@ export class Faucet {
           this.queue.queueresolve = resolve;
         });
       }
-      let index = await this.findSuitableAccount();
-      if (index === undefined) {
+      let suitableObj = await this.findSuitableAccount();
+      if (suitableObj === undefined) {
         await new Promise<void>((resolve) => {
           this.requestresolve = resolve;
         });
-        index = await this.findSuitableAccount();
+        suitableObj = await this.findSuitableAccount();
       }
-      let obj = index!;
+      let obj = suitableObj!;
       const noncetosend = obj.nonceTodo;
       obj.nonceTodo++;
       const balancenow = obj.balance;
@@ -154,12 +156,11 @@ export class Faucet {
       const ip = req.headers['x-real-ip'];
       //start to transfer transaction
       const fromaddress = obj.address;
-      const privateKey = this.addressToPrivatekey.get(fromaddress)!;
       const toaddress = req.query.address.toLocaleLowerCase();
       const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
       console.log('Start to transfer to', toaddress);
       try {
-        const result = await this.sendTransaction(fromaddress, toaddress, config.once_amount, noncetosend, '1000000000', privateKey);
+        const result = await this.sendTransaction(fromaddress, toaddress, config.once_amount, noncetosend, config.gas_price_usual, obj.privateKey);
         const hash = result.data.result;
         recordinfo.state = 1;
         recordinfo.nonce = noncetosend;
@@ -233,9 +234,8 @@ export class Faucet {
           const receipt = result.data.result;
           if (receipt === null) {
             if (Date.now() - val.createdAt > 300000) {
-              const privateKey = this.addressToPrivatekey.get(val.from)!;
               const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
-              const result = await this.sendTransaction(val.from, val.from, '0', val.nonce, '1200000000', privateKey);
+              const result = await this.sendTransaction(val.from, val.from, '0', val.nonce, config.gas_price_resend, faucetaccount.privateKey);
               recordinfo.state = 1;
               recordinfo.nonce = val.nonce;
               recordinfo.transactionhash = result.data.result;

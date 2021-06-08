@@ -106,36 +106,36 @@ export class DB {
     }
   }
 
-  async initAccounts(address: string[], faucetarray: faucetobject[], web3: Web3) {
+  async initAccounts(accountArray: { address: string; privatekey: string }[], faucetarray: faucetobject[], web3: Web3) {
     await this.initPromise;
     const blocknumber = await web3.eth.getBlockNumber();
     const transaction = await sequelize.transaction();
     try {
-      for (const addr of address) {
+      for (const account of accountArray) {
         const addrRecord = await AccountInfo.findOne({
           where: {
-            address: addr
+            address: account.address
           },
           transaction
         });
         if (addrRecord === null) {
-          const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
-          const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
+          const nonce = await web3.eth.getTransactionCount(account.address, blocknumber);
+          const balance = new BN(await web3.eth.getBalance(account.address, blocknumber));
           const accountinfo = await AccountInfo.create(
             {
-              address: addr,
+              address: account.address,
               nonceTodo: nonce,
               nonceNow: nonce
             },
             { transaction }
           );
-          faucetarray.push(new faucetobject(addr, nonce, nonce, 0, balance, this, accountinfo));
+          faucetarray.push(new faucetobject(account.address, nonce, nonce, 0, balance, this, accountinfo, account.privatekey));
         } else {
-          const nonce = await web3.eth.getTransactionCount(addr, blocknumber);
-          const balance = new BN(await web3.eth.getBalance(addr, blocknumber));
+          const nonce = await web3.eth.getTransactionCount(account.address, blocknumber);
+          const balance = new BN(await web3.eth.getBalance(account.address, blocknumber));
           addrRecord.nonceTodo = nonce > addrRecord.nonceTodo ? nonce : addrRecord.nonceTodo;
           addrRecord.nonceNow = nonce > addrRecord.nonceNow ? nonce : addrRecord.nonceNow;
-          faucetarray.push(new faucetobject(addr, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance, this, addrRecord));
+          faucetarray.push(new faucetobject(account.address, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance, this, addrRecord, account.privatekey));
         }
       }
       await transaction.commit();
