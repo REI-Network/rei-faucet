@@ -17,14 +17,6 @@ const port = Number(process.env.PORT) || 20001;
 const localhost = process.env.LOCALHOST || '127.0.0.1';
 const timeLimitCheck = async (req: any, res: any) => {
   try {
-    if (!(await faucet.db.checkAddressLimit(req.query.address))) {
-      res.send({ ErrorCode: 1, message: 'A address only 3 times within 24 hours' });
-      return;
-    }
-    if (!(await faucet.db.checkIpLimit(req.headers['x-real-ip']))) {
-      res.send({ ErrorCode: 2, message: 'A Ip only 10 times within 24 hours' });
-      return;
-    }
     if (faucet.queue.requests.length > 100) {
       res.send({ ErrorCode: 5, message: 'System busy' });
       return;
