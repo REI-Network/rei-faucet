@@ -307,7 +307,6 @@ export class Faucet {
           }
         });
         instance.resolve(result);
-        console.log('wuhu~');
       } catch (error) {
         console.log(error);
       }
