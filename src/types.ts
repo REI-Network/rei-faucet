@@ -139,7 +139,7 @@ export class Faucet {
         res.send({ ErrorCode: 1, message: 'A address only 3 times within 24 hours' });
         continue;
       }
-      if (!(await this.db.checkIpLimit('1' || req.headers['x-real-ip']))) {
+      if (!(await this.db.checkIpLimit(req.headers['x-real-ip']))) {
         res.send({ ErrorCode: 2, message: 'A Ip only 10 times within 24 hours' });
         continue;
       }
@@ -155,7 +155,7 @@ export class Faucet {
       obj.nonceTodo++;
       const balancenow = obj.balance;
       obj.balance = obj.balance.sub(new BN(config.once_amount).sub(new BN(1000000000 * 21000)));
-      const ip = '1' || req.headers['x-real-ip'];
+      const ip = req.headers['x-real-ip'];
       //start to transfer transaction
       const fromaddress = obj.address;
       const toaddress = req.query.address.toLocaleLowerCase();
