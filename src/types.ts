@@ -38,10 +38,10 @@ export class faucetobject {
   }
 }
 
-export class Queuestring {
-  queueresolve: undefined | ((value: reqandres) => void) = undefined;
-  requests: reqandres[] = [];
-  push(instance: reqandres) {
+class Queue<T> {
+  queueresolve: undefined | ((value: T) => void) = undefined;
+  requests: T[] = [];
+  push(instance: T) {
     if (this.queueresolve) {
       this.queueresolve(instance);
       this.queueresolve = undefined;
@@ -54,29 +54,14 @@ export class Queuestring {
   }
 }
 
-class QueueObject {
-  queueresolve: undefined | ((value: axioObject) => void) = undefined;
-  requests: axioObject[] = [];
-  push(instance: axioObject) {
-    if (this.queueresolve) {
-      this.queueresolve(instance);
-      this.queueresolve = undefined;
-    }
-    this.requests.push(instance);
-  }
-  pop() {
-    return this.requests.shift();
-  }
-}
-
 export class Faucet {
   private initPromise!: Promise<void>;
   faucetarray: Array<faucetobject> = [];
   requestresolve: undefined | (() => void) = undefined;
-  queue = new Queuestring();
-  objectQueue = new QueueObject();
+  queue = new Queue<reqandres>();
+  objectQueue = new Queue<axioObject>();
   db = new DB();
-  timestamp = Math.floor(Date.now() / 1000);
+  timestamp = Date.now();
 
   constructor() {
     this.initPromise = this.init();
@@ -154,7 +139,7 @@ export class Faucet {
         res.send({ ErrorCode: 1, message: 'A address only 3 times within 24 hours' });
         continue;
       }
-      if (!(await this.db.checkIpLimit(req.headers['x-real-ip']))) {
+      if (!(await this.db.checkIpLimit('1' || req.headers['x-real-ip']))) {
         res.send({ ErrorCode: 2, message: 'A Ip only 10 times within 24 hours' });
         continue;
       }
@@ -170,7 +155,7 @@ export class Faucet {
       obj.nonceTodo++;
       const balancenow = obj.balance;
       obj.balance = obj.balance.sub(new BN(config.once_amount).sub(new BN(1000000000 * 21000)));
-      const ip = req.headers['x-real-ip'];
+      const ip = '1' || req.headers['x-real-ip'];
       //start to transfer transaction
       const fromaddress = obj.address;
       const toaddress = req.query.address.toLocaleLowerCase();
@@ -280,22 +265,16 @@ export class Faucet {
 
   async timesLimitLoop() {
     await this.initPromise;
-    let counter = 0;
     console.log('start timelimit loop');
     while (1) {
-      counter++;
-      const timenow = Math.floor(Date.now() / 1000);
-      if (this.timestamp === timenow) {
-        if (counter >= 10) {
-          await new Promise<void>((resolve) => {
-            setTimeout(resolve, 1000);
-          });
-          counter = 0;
-          this.timestamp = Math.floor(Date.now() / 1000);
-        }
+      const timenow = Date.now();
+      if (this.timestamp - timenow < 100) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 100 - (this.timestamp - timenow));
+        });
+        this.timestamp = Date.now();
       } else {
         this.timestamp = timenow;
-        counter = 0;
       }
       let instance = this.objectQueue.pop();
       if (!instance) {
