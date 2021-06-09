@@ -10,7 +10,7 @@ type reqandres = {
   req: { headers: { [headers: string]: string }; query: { address: string } };
   res: { send: (arg0: any) => void };
 };
-type axioObject = { method: string; params: string; resolve: (value: AxiosResponse<any>) => void };
+type axioObject = { method: string; params: [any]; resolve: (value: AxiosResponse<any>) => void };
 
 export class faucetobject {
   address: string;
@@ -171,7 +171,7 @@ export class Faucet {
       try {
         const rawhash = await this.getRawTransaction(fromaddress, toaddress, config.once_amount, noncetosend, config.gas_price_usual, obj.privateKey);
         const result = await new Promise<AxiosResponse<any>>((resolve) => {
-          this.objectQueue.push({ method: 'eth_sendRawTransaction', params: rawhash!, resolve: resolve });
+          this.objectQueue.push({ method: 'eth_sendRawTransaction', params: [rawhash!], resolve: resolve });
         });
         const hash = result.data.result;
         recordinfo.state = 1;
@@ -225,7 +225,7 @@ export class Faucet {
         for (const val of transMap.get(key)!) {
           const faucetaccount = this.faucetarray.find((item) => item.address === val.from)!;
           const result = await new Promise<AxiosResponse<any>>((resolve) => {
-            this.objectQueue.push({ method: 'eth_getTransactionReceipt', params: val.transactionhash, resolve: resolve });
+            this.objectQueue.push({ method: 'eth_getTransactionReceipt', params: [val.transactionhash], resolve: resolve });
           });
           const receipt = result.data.result;
           if (receipt === null) {
@@ -233,7 +233,7 @@ export class Faucet {
               const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
               const rawhash = await this.getRawTransaction(val.from, val.from, '0', val.nonce, config.gas_price_resend, faucetaccount.privateKey);
               const result = await new Promise<AxiosResponse<any>>((resolve) => {
-                this.objectQueue.push({ method: 'eth_sendRawTransaction', params: rawhash!, resolve: resolve });
+                this.objectQueue.push({ method: 'eth_sendRawTransaction', params: [rawhash!], resolve: resolve });
               });
               recordinfo.state = 1;
               recordinfo.nonce = val.nonce;
@@ -302,7 +302,7 @@ export class Faucet {
           data: {
             jsonrpc: '2.0',
             method: instance.method,
-            params: [instance.params],
+            params: instance.params,
             id: 1
           }
         });
