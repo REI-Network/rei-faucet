@@ -16,14 +16,12 @@ export class faucetobject {
   address: string;
   nonceTodo: number;
   nonceNow: number;
-  gap: number;
   balance: BN;
   db: DB;
   privateKey: string;
   accountinfo: AccountInfo;
-  constructor(address: string, nonceTodo: number, nonceNow: number, gap: number, balance: BN, db: DB, accountinfo: AccountInfo, privateKey: string) {
+  constructor(address: string, nonceTodo: number, nonceNow: number, balance: BN, db: DB, accountinfo: AccountInfo, privateKey: string) {
     this.address = address;
-    this.gap = gap;
     this.nonceNow = nonceNow;
     this.nonceTodo = nonceTodo;
     this.balance = balance;
@@ -106,10 +104,10 @@ export class Faucet {
   async findSuitableAccount() {
     await this.initPromise;
     this.faucetarray.sort((a, b) => {
-      if (a.gap === b.gap) {
-        return a.nonceNow - b.nonceTodo;
+      if (a.nonceTodo - a.nonceNow === b.nonceTodo - b.nonceNow) {
+        return a.nonceNow - b.nonceNow;
       }
-      return a.gap - b.gap;
+      return a.nonceTodo - a.nonceNow - (b.nonceTodo - b.nonceNow);
     });
     const min_amount = new BN(config.min_amount);
     for (const a of this.faucetarray) {
@@ -117,7 +115,7 @@ export class Faucet {
         console.log('Balance not enough:', a.address);
         continue;
       }
-      if (a.gap < 11) {
+      if (a.nonceTodo - a.nonceNow < 11) {
         return a;
       }
     }
@@ -240,7 +238,6 @@ export class Faucet {
           } else {
             val.state = 2;
             faucetaccount.nonceNow = val.nonce;
-            faucetaccount.gap = faucetaccount.nonceTodo - faucetaccount.nonceNow;
             await faucetaccount.persist();
             await this.db.saveInfos(val);
           }
@@ -248,7 +245,7 @@ export class Faucet {
       }
       let notbusy = 0;
       for (const a of this.faucetarray) {
-        if (a.gap < 10) {
+        if (a.nonceTodo - a.nonceNow < 10) {
           notbusy = 1;
           break;
         }

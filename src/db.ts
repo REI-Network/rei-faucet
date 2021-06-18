@@ -55,7 +55,7 @@ export class DB {
       transaction
     });
     await transaction.commit();
-    if (transRecords.length < 3) {
+    if (transRecords.length < 4) {
       return true;
     }
     if (Date.now() - transRecords[2].createdAt >= 1000 * 60 * 60 * 24) {
@@ -76,7 +76,7 @@ export class DB {
       transaction
     });
     await transaction.commit();
-    if (transRecords.length < 10) {
+    if (transRecords.length < 11) {
       return true;
     }
     if (Date.now() - transRecords[9].createdAt >= 1000 * 60 * 60 * 24) {
@@ -130,13 +130,13 @@ export class DB {
             },
             { transaction }
           );
-          faucetarray.push(new faucetobject(account.address, nonce, nonce, 0, balance, this, accountinfo, account.privatekey));
+          faucetarray.push(new faucetobject(account.address, nonce, nonce, balance, this, accountinfo, account.privatekey));
         } else {
           const nonce = await web3.eth.getTransactionCount(account.address, blocknumber);
           const balance = new BN(await web3.eth.getBalance(account.address, blocknumber));
           addrRecord.nonceTodo = nonce > addrRecord.nonceTodo ? nonce : addrRecord.nonceTodo;
           addrRecord.nonceNow = nonce > addrRecord.nonceNow ? nonce : addrRecord.nonceNow;
-          faucetarray.push(new faucetobject(account.address, addrRecord.nonceTodo, addrRecord.nonceNow, addrRecord.nonceTodo - addrRecord.nonceNow, balance, this, addrRecord, account.privatekey));
+          faucetarray.push(new faucetobject(account.address, addrRecord.nonceTodo, addrRecord.nonceNow, balance, this, addrRecord, account.privatekey));
         }
       }
       await transaction.commit();
