@@ -265,9 +265,9 @@ export class Faucet {
     console.log('start timelimit loop');
     while (1) {
       const timenow = Date.now();
-      if (this.timestamp - timenow < 100) {
+      if (timenow - this.timestamp < 100) {
         await new Promise<void>((resolve) => {
-          setTimeout(resolve, 100 - (this.timestamp - timenow));
+          setTimeout(resolve, 100 - (timenow - this.timestamp));
         });
         this.timestamp = Date.now();
       } else {
