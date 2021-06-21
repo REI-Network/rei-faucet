@@ -134,11 +134,11 @@ export class Faucet {
       }
       const { req, res } = reqandres;
       if (!(await this.db.checkAddressLimit(req.query.address))) {
-        res.send({ ErrorCode: 1, message: 'A address only 3 times within 24 hours' });
+        res.send({ ErrorCode: 1, message: 'An address can only make three requests to the faucet within 24 hours' });
         continue;
       }
       if (!(await this.db.checkIpLimit(req.headers['x-real-ip']))) {
-        res.send({ ErrorCode: 2, message: 'A Ip only 10 times within 24 hours' });
+        res.send({ ErrorCode: 2, message: 'An ip can only make ten requests to the faucet within 24 hours' });
         continue;
       }
       let suitableObj = await this.findSuitableAccount();
