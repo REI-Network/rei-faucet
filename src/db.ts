@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { RecordInfo, AccountInfo, sequelize } from './model';
+import { RecordInfo, AccountInfo, sequelize, config } from './model';
 import { BN } from 'ethereumjs-util';
 import Web3 from 'web3';
 import { faucetobject } from './types';
@@ -45,7 +45,7 @@ export class DB {
     const transaction = await sequelize.transaction();
     const transRecords = await RecordInfo.findAll({
       order: [['id', 'DESC']],
-      limit: 3,
+      limit: config.address_limit,
       where: {
         [Op.and]: {
           to: address,
@@ -55,10 +55,10 @@ export class DB {
       transaction
     });
     await transaction.commit();
-    if (transRecords.length < 4) {
+    if (transRecords.length < config.address_limit) {
       return true;
     }
-    if (Date.now() - transRecords[2].createdAt >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - transRecords[config.address_limit - 1].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;
@@ -69,17 +69,17 @@ export class DB {
     const transaction = await sequelize.transaction();
     const transRecords = await RecordInfo.findAll({
       order: [['id', 'DESC']],
-      limit: 10,
+      limit: config.ip_limit,
       where: {
         ip: ip
       },
       transaction
     });
     await transaction.commit();
-    if (transRecords.length < 11) {
+    if (transRecords.length < config.ip_limit) {
       return true;
     }
-    if (Date.now() - transRecords[9].createdAt >= 1000 * 60 * 60 * 24) {
+    if (Date.now() - transRecords[config.ip_limit - 1].createdAt >= 1000 * 60 * 60 * 24) {
       return true;
     }
     return false;

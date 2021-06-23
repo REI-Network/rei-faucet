@@ -17,7 +17,7 @@ const port = Number(process.env.PORT) || 20001;
 const localhost = process.env.LOCALHOST || '127.0.0.1';
 const timeLimitCheck = async (req: any, res: any) => {
   try {
-    if (faucet.queue.requests.length > 100) {
+    if (faucet.queue.requests.length > config.request_queue_length) {
       res.send({ ErrorCode: 5, message: 'System busy' });
       return;
     }

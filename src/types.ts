@@ -115,7 +115,7 @@ export class Faucet {
         console.log('Balance not enough:', a.address);
         continue;
       }
-      if (a.nonceTodo - a.nonceNow < 11) {
+      if (a.nonceTodo - a.nonceNow < config.nonce_gap + 1) {
         return a;
       }
     }
@@ -134,11 +134,11 @@ export class Faucet {
       }
       const { req, res } = reqandres;
       if (!(await this.db.checkAddressLimit(req.query.address))) {
-        res.send({ ErrorCode: 1, message: 'An address can only make three requests to the faucet within 24 hours' });
+        res.send({ ErrorCode: 1, message: `An address can only make ${config.address_limit} requests to the faucet within 24 hours` });
         continue;
       }
       if (!(await this.db.checkIpLimit(req.headers['x-real-ip']))) {
-        res.send({ ErrorCode: 2, message: 'An ip can only make ten requests to the faucet within 24 hours' });
+        res.send({ ErrorCode: 2, message: `An ip can only make ${config.ip_limit} requests to the faucet within 24 hours` });
         continue;
       }
       let suitableObj = await this.findSuitableAccount();
@@ -220,7 +220,7 @@ export class Faucet {
           });
           const receipt = result.data.result;
           if (receipt === null) {
-            if (Date.now() - val.createdAt > 300000) {
+            if (Date.now() - val.createdAt > config.resend_time) {
               const recordinfo = await this.db.addRecordinfo(val.from, val.from, '0', '0');
               const rawhash = await this.getRawTransaction(val.from, val.from, '0', val.nonce, config.gas_price_resend, faucetaccount.privateKey);
               const result = await new Promise<AxiosResponse<any>>((resolve) => {
@@ -231,7 +231,7 @@ export class Faucet {
               recordinfo.transactionhash = result.data.result;
               recordinfo.amount = '0';
               val.state = -2;
-              faucetaccount.balance = faucetaccount.balance.add(new BN(config.once_amoun));
+              faucetaccount.balance = faucetaccount.balance.add(new BN(config.once_amount));
               await this.db.saveInfos(recordinfo, val);
             }
             break;
@@ -245,7 +245,7 @@ export class Faucet {
       }
       let notbusy = 0;
       for (const a of this.faucetarray) {
-        if (a.nonceTodo - a.nonceNow < 10) {
+        if (a.nonceTodo - a.nonceNow < config.nonce_gap) {
           notbusy = 1;
           break;
         }
