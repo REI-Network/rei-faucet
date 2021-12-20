@@ -3,6 +3,7 @@ import Web3 from 'web3';
 import { DB } from './db';
 import axios, { AxiosResponse } from 'axios';
 import { AccountInfo, config, RecordInfo } from './model';
+import { logger } from './logger';
 
 const web3 = new Web3(config.server_provider);
 
@@ -83,7 +84,7 @@ export class Faucet {
       accountArray.push({ address, privatekey });
     }
     await this.db.initAccounts(accountArray, this.faucetarray, web3);
-    console.log('finished init');
+    logger.log('finished init');
   }
 
   async getRawTransaction(from: string, to: string, count: string, nonce: number, gasPrice: string, privatekey: string) {
@@ -112,7 +113,7 @@ export class Faucet {
     const min_amount = new BN(config.min_amount);
     for (const a of this.faucetarray) {
       if (a.balance.lt(min_amount)) {
-        console.log('Balance not enough:', a.address);
+        logger.error('Balance not enough:', a.address);
         continue;
       }
       if (a.nonceTodo - a.nonceNow < config.nonce_gap + 1) {
@@ -124,7 +125,7 @@ export class Faucet {
 
   async queueLoop() {
     await this.initPromise;
-    console.log('start queue loop');
+    logger.log('start queue loop');
     while (1) {
       let reqandres = this.queue.pop();
       if (!reqandres) {
@@ -135,10 +136,12 @@ export class Faucet {
       const { req, res } = reqandres;
       if (!(await this.db.checkAddressLimit(req.query.address))) {
         res.send({ ErrorCode: 1, message: `An address can only make ${config.address_limit} requests to the faucet within 24 hours` });
+        logger.log('========== the address:  ', req.query.address, '  has overflow requests');
         continue;
       }
-      if (!(await this.db.checkIpLimit(req.headers['x-real-ip']))) {
+      if (!(await this.db.checkIpLimit(req.headers['cf-connecting-ip']))) {
         res.send({ ErrorCode: 2, message: `An ip can only make ${config.ip_limit} requests to the faucet within 24 hours` });
+        logger.log('========== the ip:  ', req.headers['cf-connecting-ip'], '  has overflow requests');
         continue;
       }
       let suitableObj = await this.findSuitableAccount();
@@ -153,12 +156,12 @@ export class Faucet {
       obj.nonceTodo++;
       const balancenow = obj.balance;
       obj.balance = obj.balance.sub(new BN(config.once_amount).sub(new BN(1000000000 * 21000)));
-      const ip = req.headers['x-real-ip'];
+      const ip = req.headers['cf-connecting-ip'];
       //start to transfer transaction
       const fromaddress = obj.address;
       const toaddress = req.query.address.toLocaleLowerCase();
       const recordinfo = await this.db.addRecordinfo(fromaddress, toaddress, ip, config.once_amount);
-      console.log('Start to transfer to', toaddress);
+      logger.log('Start to transfer to', toaddress);
       try {
         const rawhash = await this.getRawTransaction(fromaddress, toaddress, config.once_amount, noncetosend, config.gas_price_usual, obj.privateKey);
         const result = await new Promise<AxiosResponse<any>>((resolve) => {
@@ -172,13 +175,13 @@ export class Faucet {
         await obj.persist();
         await this.db.saveInfos(recordinfo);
         res.send({ ErrorCode: 0, message: 'Transaction transfered', transactionhash: hash });
-        console.log('transaction hash: ', hash);
+        logger.log('transaction hash: ', hash);
       } catch (e) {
         obj.nonceTodo = noncetosend;
         obj.balance = balancenow;
         await obj.persist();
         recordinfo.state = -1;
-        console.error(e);
+        logger.error(e);
         await this.db.saveInfos(recordinfo);
         res.send({ ErrorCode: 4, message: 'Transfer failed' });
       }
@@ -187,7 +190,7 @@ export class Faucet {
 
   async receiptLoop() {
     await this.initPromise;
-    console.log('start receipt loop');
+    logger.log('start receipt loop');
     while (1) {
       const transArray = await this.db.findUnaffirmtranscation();
       if (transArray.length === 0) {
@@ -262,7 +265,7 @@ export class Faucet {
 
   async timesLimitLoop() {
     await this.initPromise;
-    console.log('start timelimit loop');
+    logger.log('start timelimit loop');
     while (1) {
       const timenow = Date.now();
       if (timenow - this.timestamp < config.request_interval) {
@@ -292,7 +295,7 @@ export class Faucet {
         });
         instance.resolve(result);
       } catch (error) {
-        console.log(error);
+        logger.error(error);
       }
     }
   }

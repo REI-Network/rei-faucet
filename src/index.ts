@@ -2,6 +2,7 @@ import express from 'express';
 import { config } from './model';
 import Web3 from 'web3';
 import { Faucet } from './types';
+import { logger } from './logger';
 require('console-stamp')(console, {
   format: ':date(yyyy/mm/dd HH:MM:ss.l):label'
 });
@@ -12,13 +13,16 @@ if (!process.env['PRIVATEKEY']) {
 const app = express();
 const web3 = new Web3(config.server_provider);
 const faucet = new Faucet();
-
+let counted = 0;
 const port = Number(process.env.PORT) || 20001;
 const localhost = process.env.LOCALHOST || '127.0.0.1';
 const timeLimitCheck = async (req: any, res: any) => {
   try {
+    console.log('========== the ', ++counted, ' request===========');
+    console.log('========== there are ', faucet.queue.requests.length, ' in the queue');
     if (faucet.queue.requests.length > config.request_queue_length) {
       res.send({ ErrorCode: 5, message: 'System busy' });
+      console.log('System busy', faucet.queue.requests.length, ' in the queue');
       return;
     }
     const address = req.query.address.toLocaleLowerCase();
