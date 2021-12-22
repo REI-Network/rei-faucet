@@ -56,7 +56,7 @@ class Queue<T> {
 export class Faucet {
   private initPromise!: Promise<void>;
   faucetarray: Array<faucetobject> = [];
-  requestresolve: undefined | (() => void) = undefined;
+  // requestresolve: undefined | (() => void) = undefined;
   queue = new Queue<reqandres>();
   objectQueue = new Queue<axioObject>();
   db = new DB();
@@ -146,10 +146,9 @@ export class Faucet {
       }
       let suitableObj = await this.findSuitableAccount();
       if (suitableObj === undefined) {
-        await new Promise<void>((resolve) => {
-          this.requestresolve = resolve;
-        });
-        suitableObj = await this.findSuitableAccount();
+        res.send('the system is busy, try another request later');
+        logger.log('system busy, wait for anthor request');
+        continue;
       }
       let obj = suitableObj!;
       const noncetosend = obj.nonceTodo;
@@ -253,10 +252,10 @@ export class Faucet {
           break;
         }
       }
-      if (notbusy && this.requestresolve) {
-        this.requestresolve();
-        this.requestresolve = undefined;
-      }
+      // if (notbusy && this.requestresolve) {
+      //   this.requestresolve();
+      //   this.requestresolve = undefined;
+      // }
       await new Promise<void>((resovle) => {
         setTimeout(resovle, 5000);
       });
