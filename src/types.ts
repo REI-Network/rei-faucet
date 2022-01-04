@@ -110,6 +110,7 @@ export class Faucet {
       }
       return a.nonceTodo - a.nonceNow - (b.nonceTodo - b.nonceNow);
     });
+    logger.log(this.faucetarray);
     const min_amount = new BN(config.min_amount);
     for (const a of this.faucetarray) {
       if (a.balance.lt(min_amount)) {
@@ -120,6 +121,7 @@ export class Faucet {
         return a;
       }
     }
+    logger.log('not find suitable account');
     return undefined;
   }
 
@@ -242,6 +244,7 @@ export class Faucet {
             faucetaccount.nonceNow = val.nonce;
             await faucetaccount.persist();
             await this.db.saveInfos(val);
+            logger.info(val.transactionhash, '   received receipt and been confirmed ');
           }
         }
       }
