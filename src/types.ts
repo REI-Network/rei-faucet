@@ -88,13 +88,16 @@ export class Faucet {
   }
 
   async getRawTransaction(from: string, to: string, count: string, nonce: number, gasPrice: string, privatekey: string) {
+    const gasresult = await new Promise<AxiosResponse<any>>((resolve) => {
+      this.objectQueue.push({ method: 'eth_estimateGas', params: [{ from: from, to: to, gasPrice: config.gas_price_usual }], resolve: resolve });
+    });
     const signedTransaction = await web3.eth.accounts.signTransaction(
       {
         from: from,
         to: to,
         value: config.once_amount,
         gasPrice: gasPrice,
-        gas: '21000',
+        gas: gasresult.data.result,
         nonce: nonce
       },
       privatekey
